@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
 
+## pulledpork3 v(whatever it says below!)
+
+# Copyright (C) 2021 Noah Dietrich, Michael Shirk and the PulledPork Team!
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+
 #------------------------------------------------------------------------------
 #   GLOBAL CONSTANTS
 #------------------------------------------------------------------------------
@@ -83,6 +102,23 @@ class GlobalConfiguration:
         self.policy_path    = None          # where to write the policy file if rule_mode is 'policy'
 
 
+#------------------------------------------------------------------------------
+#   OMG We MUST HAVE FLYING PIGS! The community demands it.
+#------------------------------------------------------------------------------
+def pigsflying():
+    
+    #For now simple printing, will need to clean this up
+    print ("    https://github.com/shirkdog/pulledpork3")
+    print ("      _____ ____")
+    print ("     `----,\\    )")
+    print ("      `--==\\\\  /    PulledPork v{} - {}".format(VERSION_NUMBER, TAGLINE))
+    print ("       `--==\\\\/")
+    print ("     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk")
+    print ("  @_/        /  66\\_  and the PulledPork Team!")
+    print ("    |    \\   \\   _(\")")
+    print ("     \\   /-| ||'--'  Rules give me wings!")
+    print ("      \\_\\  \\_\\\\")
+    print ("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 
 #------------------------------------------------------------------------------
@@ -99,7 +135,7 @@ def main():
 
     # if the -V flag (version) was passed: Print the script Version and Exit
     if gc.args.version:
-        print ("{} v{}\n\t{}".format(SCRIPT_NAME, VERSION_NUMBER, TAGLINE))
+        print ("{} v{} - {}".format(SCRIPT_NAME, VERSION_NUMBER, TAGLINE))
         exit(0)
 
     #------------------------------------------------------------------------------
@@ -113,6 +149,12 @@ def main():
         gc.verbose = LOGLEVEL.WARNING
     else:
         gc.verbose = LOGLEVEL.INFO
+
+
+    #------------------------------------------------------------------------------
+    # Always show pigs flying as the premable, regardless of verbosity
+    pigsflying()
+
 
     #------------------------------------------------------------------------------
     # Load the configuration File from command line (-c FILENAME). Verify exists, and only 1 entry.
