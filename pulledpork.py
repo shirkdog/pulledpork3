@@ -46,7 +46,7 @@ ET_BLOCKLIST_URL                        = 'http://rules.emergingthreatspro.com/f
 from argparse import ArgumentParser         # command line parameters parser
 from configparser import ConfigParser       # to parse the conf file
 from enum import IntEnum                    # enum type, introduced in python 3.4.
-from json import load                       # to load json manfiest file in lightSPD
+from json import load                       # to load json manifest file in lightSPD
 from os import environ, listdir, scandir, mkdir            
 from os.path import isfile, join, sep, abspath, basename, isdir
 from platform import platform, version, uname, system, python_version, architecture
@@ -65,7 +65,7 @@ from urllib.parse import urlsplit           # get filename from url
 #------------------------------------------------------------------------------
 #   GLOBAL SESSION VARIABLES
 #------------------------------------------------------------------------------
-sep             = sep                   # the os-specific path seperator (/ or \)
+sep             = sep                   # the os-specific path separator (/ or \)
 
 #------------------------------------------------------------------------------
 #   Class for GlobalConfiguration
@@ -84,7 +84,7 @@ class GlobalConfiguration:
 
         self.halt_on_warn   = True      # terminate on warning
 
-        self.snort_version  = ''                # snort version (from config or determined progmatically)
+        self.snort_version  = ''                # snort version (from config or determined programmatically)
         self.ips_policy     = 'connectivity'    # what rules should be enabled/disabled by policy
         self.distro         = None              # distro needed for precompiled so rules
         self.rules_outfile  = ''                # where to write combined rules file       
@@ -108,7 +108,7 @@ class GlobalConfiguration:
 def pigsflying():
     
     #For now simple printing, will need to clean this up
-    print ("    https://github.com/shirkdog/pulledpork3")
+    print ("\n    https://github.com/shirkdog/pulledpork3")
     print ("      _____ ____")
     print ("     `----,\\    )")
     print ("      `--==\\\\  /    PulledPork v{} - {}".format(VERSION_NUMBER, TAGLINE))
@@ -139,7 +139,7 @@ def main():
         exit(0)
 
     #------------------------------------------------------------------------------
-    # Determine verbosity level for output and print the envrionment if 'DEBUG'
+    # Determine verbosity level for output and print the environment if 'DEBUG'
     if gc.args.verbose:
         gc.verbose = LOGLEVEL.VERBOSE
     elif gc.args.debug:
@@ -152,7 +152,7 @@ def main():
 
 
     #------------------------------------------------------------------------------
-    # Always show pigs flying as the premable, regardless of verbosity
+    # Always show pigs flying as the preamble, regardless of verbosity
     pigsflying()
 
 
@@ -188,8 +188,8 @@ def main():
     gc.halt_on_warn = not gc.args.ignore_warn
 
     #------------------------------------------------------------------------------
-    # Valdate configuration file (logical validation of settings; error out if issue)
-    #   deterine fields for GC from command line and config file, save in global gc
+    # Validate configuration file (logical validation of settings; error out if issue)
+    #   determine fields for GC from command line and config file, save in global gc
     # todo: join these two functions into single function
     validate_configuration()
     determine_configuration_options()
@@ -200,7 +200,7 @@ def main():
     log(LOGLEVEL.VERBOSE, "Temporary working directory is: " + gc.tempdir)
 
     #------------------------------------------------------------------------------
-    # Determine a set of required info, from config file or from the computer iteslf
+    # Determine a set of required info, from config file or from the computer itself
     gc.snort_version    = getSnortVersion()
     gc.distro           = get_distro() 
     gc.ips_policy       = get_policy()
@@ -549,15 +549,15 @@ def log( level = LOGLEVEL.VERBOSE, msg =''):
 def parse_argv():
 
     # Parse command-line arguments
-    arg_parser = ArgumentParser(epilog=TAGLINE, description="{} v{}".format(SCRIPT_NAME, VERSION_NUMBER) )
+    arg_parser = ArgumentParser(description="{} v{} - {}".format(SCRIPT_NAME, VERSION_NUMBER, TAGLINE) )
 
-    # we want Quiet or Verbose (v, vv), can't have morethan one (but we can have none)
+    # we want Quiet or Verbose (v, vv), can't have more than one (but we can have none)
     group_verbosity = arg_parser.add_mutually_exclusive_group()
     group_verbosity.add_argument("-v",  "--verbose",    help="Increase output verbosity",        action="store_true")
     group_verbosity.add_argument("-vv", "--debug",      help="Really increase output verbosity", action="store_true")
     group_verbosity.add_argument("-q",  "--quiet",      help='Only display warnings and errors', action="store_true")
 
-    # input file or foder (optional)
+    # input file or folder (optional)
     group_input = arg_parser.add_mutually_exclusive_group()
     group_input.add_argument("-f", "--file", help="Use this file as source of rulesets", type=abspath)
     group_input.add_argument("-F", "--folder", help="Use all the tgz file in this folder as source of rulesets", type= abspath)
@@ -566,7 +566,7 @@ def parse_argv():
     arg_parser.add_argument("-c", "--configuration", help="path to the configuration file", nargs=1, type= abspath)
     arg_parser.add_argument("-V", "--version", help='Print version number and exit', action="store_true")
     arg_parser.add_argument("-k", "--keep-temp-dir", help='Do not delete the temp directory when done', action="store_true")
-    arg_parser.add_argument("-po", "--print-oinkcode", help='Do not obfusticate oinkcode in output.', action="store_true")
+    arg_parser.add_argument("-po", "--print-oinkcode", help='Do not obfuscate oinkcode in output.', action="store_true")
     arg_parser.add_argument("-i", "--ignore-warn", help='Ignore warnings and continue processing.', action="store_true")
 
     return arg_parser.parse_args()
@@ -618,23 +618,23 @@ def validate_configuration():
     else:
         log(LOGLEVEL.DEBUG, "Rulesets will be downloaded from online sources (not the local filesystem).")
         
-        # We are not using local rulesets, so we need online rulesets (note, user might only want blockslists,
-        # so this is a warning that can be overwridden.)
+        # We are not using local rulesets, so we need online rulesets (note, user might only want blocklists,
+        # so this is a warning that can be overridden.)
         if not gc.config.has_section('rulesets'):
             log(LOGLEVEL.WARNING, "Missing section [rulesets] in configuration file.  No rulesets can be downloaded")
 
-        # log warning if downloading multiple snort rulesets (only 1 recomended)
+        # log warning if downloading multiple snort rulesets (only 1 recommended)
         if [gc.config['rulesets'].getboolean('registered_ruleset'),
             gc.config['rulesets'].getboolean('LightSPD_ruleset'),
             gc.config['rulesets'].getboolean('community_ruleset')].count(True) > 1:
-            log(LOGLEVEL.WARNING, "You have specified more than one Ruleset from snort/talos. This is not recomended (community, registered, and LightSPD have a lot of overlap).")
+            log(LOGLEVEL.WARNING, "You have specified more than one Ruleset from Snort/Talos. This is not recommended (community, registered, and LightSPD have a lot of overlap).")
 
         # make sure we are getting rules from somewhere (local.rules, snort ruleset, or URL(todo))
         if [gc.config['rulesets'].getboolean('registered_ruleset'),
             gc.config['rulesets'].getboolean('LightSPD_ruleset'),
             gc.config['rulesets'].getboolean('community_ruleset'),
             gc.config.has_option('configuration', 'local_rules') ].count(True) == 0:
-            log(LOGLEVEL.WARNING, "No rulesets have been specified for download. Rule Processing won't hapen.")
+            log(LOGLEVEL.WARNING, "No rulesets have been specified for download. Rule Processing won't happen.")
 
         # if we are downloading the registered or lightSPD ruleset, we also require a oinkcode
         if gc.config['rulesets'].getboolean('registered_ruleset') or gc.config['rulesets'].getboolean('LightSPD_ruleset'):
@@ -648,8 +648,8 @@ def validate_configuration():
     #---------------------------------------------------------------------
     # blocklist validation
     # TODO: if we have blocklists to download, we require block_list_path
-    # todo: extra blocklists
-    # todo; if we havea block_list_path but no URLS, warn
+    # TODO: extra blocklists
+    # TODO; if we havea block_list_path but no URLS, warn
     # TODO: test if [blocklist] does not exist
     if [ gc.config['blocklist'].getboolean('snort_blocklist'),
          gc.config['blocklist'].getboolean('et_blocklist')].count(True) > 0 and gc.bocklist_outfile == None:
@@ -697,7 +697,7 @@ def determine_configuration_options():
         if gc.config.has_option('configuration', 'sorule_path'):
             gc.sorule_path = gc.config['configuration']['sorule_path']
         else:
-            log(LOGLEVEL.ERROR, '"sorule_path" is reuquired when "process_so_rules" is set to "true".')
+            log(LOGLEVEL.ERROR, '"sorule_path" is required when "process_so_rules" is set to "true".')
 
     # get list of filenames to ignore in a ruleset
     if gc.config.has_option('rulesets', 'ignore_files'):
@@ -716,7 +716,7 @@ def determine_configuration_options():
 
 
 #------------------------------------------------------------------------------
-#   FUNCTION to print all the operatoinal settings after parsing (what we will do)
+#   FUNCTION to print all the operational settings after parsing (what we will do)
 #------------------------------------------------------------------------------
 def print_operational_settings():
     log(LOGLEVEL.VERBOSE, '------------------------------------------------------------')
@@ -730,9 +730,9 @@ def print_operational_settings():
 
     # are we printing oinkcode?
     if gc.print_oinkcode:
-        log(LOGLEVEL.VERBOSE, 'Oinkcode will NOT be obfusticated in the output (do not share your oinkcode).')
+        log(LOGLEVEL.VERBOSE, 'Oinkcode will NOT be obfuscated in the output (do not share your oinkcode).')
     else:
-        log(LOGLEVEL.VERBOSE, 'Oinkcode will be obfusticated in the output (this is a good thing).')
+        log(LOGLEVEL.VERBOSE, 'Oinkcode will be obfuscated in the output (this is a good thing).')
     
     # Temp dir management
     log(LOGLEVEL.VERBOSE, 'Temporary working directory is: ' + gc.tempdir)
@@ -1327,7 +1327,7 @@ def is_rule(rule):
         return {'enabled' : enabled, 'rule' : rule }
 
 #------------------------------------------------------------------------------
-#   FUNCTION Print enviornmental Information
+#   FUNCTION Print environment Information
 #------------------------------------------------------------------------------
 def printEnviornment(gc):
     # todo: get distro
@@ -1335,7 +1335,7 @@ def printEnviornment(gc):
     log(LOGLEVEL.VERBOSE, 'Running {} v{}'.format(SCRIPT_NAME, VERSION_NUMBER))
     log(LOGLEVEL.VERBOSE, "Verbosity (-v or -vv) flag enabled. Verbosity level is: " + LOGLEVEL(gc.verbose).name)
     log(LOGLEVEL.DEBUG, 'Start time is: ' + gc.start_time)
-    log(LOGLEVEL.DEBUG, 'Command-line argugments (argv) are:' + str(argv))
+    log(LOGLEVEL.DEBUG, 'Command-line arguments (argv) are:' + str(argv))
     log(LOGLEVEL.DEBUG, "Parsed command-line arguments are (including defaults):")
     for k,v in sorted(vars(gc.args).items()):
         log(LOGLEVEL.DEBUG, "\t" + str(k) + ' = ' + str(v) )
@@ -1343,10 +1343,10 @@ def printEnviornment(gc):
     log(LOGLEVEL.DEBUG, 'uname is: ' + str(uname() ))
     log(LOGLEVEL.DEBUG, 'System is: ' + str(system() ))
     log(LOGLEVEL.DEBUG, 'Python: ' + str(python_version()))
-    log(LOGLEVEL.DEBUG, "architecutre is: " + str(architecture()[0]) )
+    log(LOGLEVEL.DEBUG, "architecture is: " + str(architecture()[0]) )
     log(LOGLEVEL.DEBUG, "PWD is: " + str(environ.get('PWD')))
     log(LOGLEVEL.DEBUG, "SHELL is: " + str(environ.get('SHELL')))
-    log(LOGLEVEL.DEBUG, 'OS Path Seperator is: ' + sep)
+    log(LOGLEVEL.DEBUG, 'OS Path Separator is: ' + sep)
     
 
 #------------------------------------------------------------------------------
