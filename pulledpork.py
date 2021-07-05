@@ -323,7 +323,7 @@ def main():
                 p =  get_policy_from_file(rule_set[1] + sep + 'so_rules' + sep + gc.ips_policy )
                 pol.extend(p)
 
-            # we need to use hte policy (.states) file to mark rules as enabled/disabled
+            # we need to use the policy (.states) file to mark rules as enabled/disabled
 
             # create list of fingerprints for all enabled policies
             enabled_rule_policies = []
@@ -354,8 +354,159 @@ def main():
 
         #--------------------------------------------------------------------------
         if rule_set[0] == 'SNORT_LIGHTSPD':
-            # TODO: DO THIS
-            pass
+
+            rules = []
+            pol = []
+
+            # the manifest.json file is only used (at this time) for processing .so rules
+            if gc.process_so_rules:
+
+                json_manifest_file = rule_set[1] + sep + 'lightspd' + sep + 'manifest.json'
+
+                # load json manfiest file to identify .so rules location
+                log(LOGLEVEL.VERBOSE, 'Processing json manifest file ' + json_manifest_file)
+                with open(json_manifest_file) as f:
+                    manifest = load(f)
+
+                manifest_versions = []
+                for i in manifest["snort versions"]:
+                    manifest_versions.append(i)
+
+                manifest_versions = sorted(manifest_versions, reverse=True)
+
+                log(LOGLEVEL.DEBUG, 'Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file: ' + str(manifest_versions))
+
+                # find version number in the json file that is the largest number just below or equal to the version of snort3.
+                log(LOGLEVEL.DEBUG, 'Looking for a version in the manifest file that is less than or equal to our current snort Version: ' + gc.snort_version)
+                version_to_use = None
+                for v in manifest_versions:
+                    if v <= gc.snort_version:
+                        version_to_use = v
+                        break
+
+                if version_to_use == None:
+                    log(LOGLEVEL.WARNING, "Not able to find a valid snort version in the lightSPD manifest file. not processing any SO rules from the lightSPD package.")
+                else:
+                    log(LOGLEVEL.DEBUG, "Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is: ' + gc.snort_version)
+                    # get other data from manifest file for the selected version
+                    policies_path = manifest["snort versions"][version_to_use]['policies_path']
+                    policies_path = policies_path.replace('/',sep)
+                    log(LOGLEVEL.DEBUG, 'policies_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + policies_path)
+
+                    # todo: try/catch next line in case the arch. doesn't exist
+                    modules_path = manifest["snort versions"][version_to_use]['architectures'][gc.distro]["modules_path"]
+                    modules_path = modules_path.replace('/',sep)
+                    log(LOGLEVEL.DEBUG, 'modules_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + modules_path)
+
+
+                    # copy so files from our archive to working folder
+                    so_src_folder = rule_set[1] + 'lightspd' + sep + modules_path + sep + 'so_rules' + sep
+                    src_files = listdir(so_src_folder)
+                    for file_name in src_files:
+                        full_file_name = join(so_src_folder, file_name)
+                        if isfile(full_file_name):
+                            copy(full_file_name, gc.tempdir + sep +  'so_rules' + sep )
+
+                    # get SO rule stub files
+                    # todo: generate stubs if distro folder doesn't exist
+                    so_rules_path = rule_set[1] + 'lightspd' + sep + 'modules' + sep + 'stubs' + sep
+                    r = get_text_rules_from_folder(so_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'so')
+                    rules.extend(r)
+
+                    # Get So rule policies
+                    p =  get_policy_from_file(so_rules_path + sep + gc.ips_policy )
+                    pol.extend(p)
+
+                log(LOGLEVEL.DEBUG, "Completed loading lightSPD Ruleset .so rules. " + str(len(r)) + ' rules found')
+
+
+            # LOAD TEXT RULES FROM LightSPD archive
+            # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
+            # this should hopefully be changed to an explicit entry in the manifest.json file
+
+            text_rules_path = rule_set[1] + sep + 'lightspd' + sep + 'rules' + sep + '3.0.0.0' + sep
+            
+            r = get_text_rules_from_folder(text_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'text')
+            p = get_policy_from_file(text_rules_path + sep + gc.ips_policy )
+
+            log(LOGLEVEL.DEBUG, "Completed loading lightSPD Ruleset text rules. " + str(len(r)) + ' rules found')
+            rules.extend(r)
+            pol.extend(p)           
+
+            # LOAD BULTIN RULES FROM LightSPD archive
+            # right now, the LightSPD folder has a single 3.0.1-3 folder in it, so let's use that explictly
+            # hopefully this will be changed to an explicit entry in the manifest.json file
+            builtin_rules_path = str(rule_set[1] + sep + 'lightspd' + sep + 'builtins' + sep + '3.0.1-3' )
+            r = get_text_rules_from_folder(builtin_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'builtin')
+            p = get_policy_from_file(builtin_rules_path + sep + gc.ips_policy )
+
+            log(LOGLEVEL.DEBUG, "Completed loading lightSPD Ruleset builtin rules. " + str(len(r)) + ' rules found')
+            rules.extend(r)
+            pol.extend(p)
+
+
+            # due to the way lightSPD uses .states files (policies) to enable and disabled individual rules, we need to 
+            # determine which rules are enabled and disabled by checking the GID:SID for each rule against all the 
+            # entries in the policy file. We fingerprint each rule (GID:SID) and compare it against all the policys listed.
+            # the state (enabled/disabled) is written as another entry in each rules dictionary (the 'enabled' entry).
+            # create fingerprints of rules
+            enabled_rule_policies = []
+            for state in pol:
+                gid = search(r'gid:(\d+);', state)
+                sid = search(r'sid:(\d+);',state)
+                action = search(r'; enable;\)$', state)
+
+                if sid and gid and action:
+                    gid = gid.group(1)
+                    sid = sid.group(1)
+                    # this is a valid enable policy
+                    # any rules matching this policy entry should be enabled
+                    enabled_rule_policies.append (gid + ':' + sid + ':')
+
+            # Mark rule object (enabled dict entry) as enabled or disabled based on the policy file
+            for r in rules:
+                if r['fingerprint']:
+                    # fingerprints are slightly different between policy file and rule file (policy has no REV)
+                    fgr = search(r'^(\d+:\d+:)\d$', r['fingerprint'])
+
+                    if fgr and fgr.group(1) in enabled_rule_policies:
+                        r['enabled'] = True
+                    else:
+                        r['enabled'] = False
+
+
+            # last step for LightSPD rules, save back with all the other rules
+            all_rules.extend(rules)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            # process text rules
+            #rules_folder = rule_set[1] + sep + 'lightspd' + sep + 'rules' + sep
+
+            # process bultin rules
+
+            # process .so rules
+
+
+            # create fingerprint of all rules (gid:sid:rev) (used in the next step)
+
+            # enable/disable rules based on the policy (.states) chosen
+
+
+
         else:
             pass
             # TODO: non-standard ruleset, we need to figure it out
@@ -1000,96 +1151,6 @@ def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
 
 
 #------------------------------------------------------------------------------
-#   Process LightSPD ruleset folder
-#------------------------------------------------------------------------------
-def process_lightSPD_ruleset(rulepath):
-
-    # TODO: handle policies file
-    # TODO: handle so rules
-
-    log(LOGLEVEL.VERBOSE, 'Processing lightSPD Ruleset extracted to ' + rulepath)
-    rules = []
-    json_manifest_file = rulepath + sep + 'lightspd' + sep + 'manifest.json'
-    rules_folder = rulepath + sep + 'lightspd' + sep + 'rules' + sep
-
-    # load json manfiest file
-    log(LOGLEVEL.VERBOSE, 'Processing json manifest file ' + json_manifest_file)
-    with open(json_manifest_file) as f:
-        manifest = load(f)
-
-    manifest_versions = []
-    for i in manifest["snort versions"]:
-        manifest_versions.append(i)
-
-    manifest_versions = sorted(manifest_versions, reverse=True)
-
-    log(LOGLEVEL.DEBUG, 'Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file: ' + str(manifest_versions))
-
-    # find version from json that is the oldest one below our version.
-    log(LOGLEVEL.DEBUG, 'Looking for a version in the manifest file that is less than or equal to our current snort Version: ' + gc.snort_version)
-    version_to_use = None
-    for v in manifest_versions:
-        if v <= gc.snort_version:
-            version_to_use = v
-            break
-
-    # if version_to_use = none, error
-    if version_to_use == None:
-        log(LOGLEVEL.WARNING, "Not able to find a valid snort version in the lightSPD manifest file. not processing any SO rules from the lightSPD package.")
-    else:
-        log(LOGLEVEL.DEBUG, "Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is: ' + gc.snort_version)
-        # get other data from manifest file for the selected version
-        policies_path = manifest["snort versions"][version_to_use]['policies_path']
-        log(LOGLEVEL.DEBUG, 'policies_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + policies_path)
-
-        # TODO: process policies
-
-        if gc.distro:
-            architectures = manifest["snort versions"][version_to_use]['architectures'][gc.distro]["modules_path"]
-            log(LOGLEVEL.DEBUG, 'architectures from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + architectures)
-
-            # todo: process SO files
-
-    
-    # process text rules files - use rules_folder, should have versioned folders in it (ugh)
-    log(LOGLEVEL.DEBUG, "checking rules folder for versioned rules folders: " + rules_folder)
-    folders = [ f for f in listdir(rules_folder) if isdir(rules_folder + sep + f) ]
-    log(LOGLEVEL.DEBUG, "found " + str(len(folders)) + ' rules folders.')
-
-    folders = sorted(list(folders), reverse=True)
-
-    # find folder with largest version number that is less than our snort_version
-    rules_folder = None
-    for f in folders:
-        if f <= gc.snort_version:
-            rules_folder = f
-            break
-    if rules_folder == None:
-        log(LOGLEVEL.WARNING, "Not able to find a valid snort version for text rules in the lightSPD manifest file. not processing any text rules from the lightSPD package.")
-    else:
-        log(LOGLEVEL.DEBUG, "Using snort text rules version " + rules_folder + ' from lightSPD Ruleset. Actual Snort version is: ' + gc.snort_version)
-
-        # process text rules
-        text_rules_path = rulepath + sep + 'lightspd' + sep + 'rules' + sep + rules_folder + sep
-        # Process text rules located in 'rules' subfolder
-        rules_files = [ f for f in scandir(text_rules_path) if f.is_file() and f.name.endswith('.rules') and f.name != 'includes.rules' ]
-        
-        for rules_file in rules_files:
-            log(LOGLEVEL.DEBUG, "processing lightSPD ruleset text rules file: " + rules_file.name)
-            #todo error handling on fopen
-            with open(rules_file.path,'r') as f:
-                r = f.readlines()
-            log(LOGLEVEL.DEBUG, "\t" + str(len(r)) + " rule entries found.")
-            rules.extend(r) 
-
-        log(LOGLEVEL.DEBUG, "Completed Processing lightSPD Ruleset text rules. " + str(len(rules)) + ' rules found')
-
-    log(LOGLEVEL.DEBUG, "Completed Processing lightSPD Ruleset. " + str(len(rules)) + ' rules to return')
-    return rules
-
-
-
-#------------------------------------------------------------------------------
 #   Get the contents of a ips_policy file
 #   
 #------------------------------------------------------------------------------
@@ -1109,6 +1170,7 @@ def get_policy_from_file(path):
         if not enabled_rules[i].endswith("\n"):
             enabled_rules[i] = r + "\n"
 
+    # TODO: remove any entries that aren't actual policy entries (comments and whitespace)
     log(LOGLEVEL.DEBUG, 'Exiting function get_policy_from_file. Returning ' + str(len(enabled_rules)) + ' entries.')
 
     return enabled_rules
