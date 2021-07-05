@@ -478,37 +478,8 @@ def main():
             # last step for LightSPD rules, save back with all the other rules
             all_rules.extend(rules)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            # process text rules
-            #rules_folder = rule_set[1] + sep + 'lightspd' + sep + 'rules' + sep
-
-            # process bultin rules
-
-            # process .so rules
-
-
-            # create fingerprint of all rules (gid:sid:rev) (used in the next step)
-
-            # enable/disable rules based on the policy (.states) chosen
-
-
-
         else:
-            pass
+            log(LOGLEVEL.WARNING, "Unknown ruleset archive folder recieved.")
             # TODO: non-standard ruleset, we need to figure it out
 
 
