@@ -285,7 +285,7 @@ def main():
             log(LOGLEVEL.VERBOSE, str(len(r)) + ' actual rules found in Community ruleset')
 
         #--------------------------------------------------------------------------
-        if rule_set[0] == 'SNORT_REGISTERED':
+        elif rule_set[0] == 'SNORT_REGISTERED':
             # process text rules
             text_rules_path = str(rule_set[1] + sep + 'rules')
             rules = get_text_rules_from_folder(text_rules_path, 'SNORT_REGISTERED', 'snort_ruleset', 'text')
@@ -353,7 +353,7 @@ def main():
             all_rules.extend(rules)
 
         #--------------------------------------------------------------------------
-        if rule_set[0] == 'SNORT_LIGHTSPD':
+        elif rule_set[0] == 'SNORT_LIGHTSPD':
 
             rules = []
             pol = []
