@@ -896,10 +896,9 @@ def print_operational_settings():
             log(LOGLEVEL.VERBOSE, "Other blocklist will be downloaded: " + gc.config['blocklist'][bl])
             other_bl = True
 
-    if [gc.config['blocklist'].getboolean('snort_blocklist'),
-            gc.config['blocklist'].getboolean('et_blocklist')].count(True) == 0 and not other_bl:
+    if not any([gc.config['blocklist'].getboolean('snort_blocklist'),
+                gc.config['blocklist'].getboolean('et_blocklist')]) and not other_bl:
         log(LOGLEVEL.VERBOSE, "No Blocklists will be downloaded.")
-
     else:
         log(LOGLEVEL.VERBOSE, 'Blocklist entries will be written to: ' + gc.config['blocklist']['block_list_path'])
 
