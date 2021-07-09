@@ -274,7 +274,7 @@ def main():
             all_rules.extend(r)
             log(LOGLEVEL.VERBOSE, str(len(r)) + ' actual rules found in Community ruleset')
 
-        if rule_set[0] == 'SNORT_REGISTERED':
+        elif rule_set[0] == 'SNORT_REGISTERED':
             # process text rules
             text_rules_path = str(rule_set[1] + sep + 'rules')
             rules = get_text_rules_from_folder(text_rules_path, 'SNORT_REGISTERED', 'snort_ruleset', 'text')
@@ -340,7 +340,7 @@ def main():
 
             all_rules.extend(rules)
 
-        if rule_set[0] == 'SNORT_LIGHTSPD':
+        elif rule_set[0] == 'SNORT_LIGHTSPD':
 
             rules = []
             pol = []
@@ -421,7 +421,8 @@ def main():
             # LOAD BULTIN RULES FROM LightSPD archive
             # right now, the LightSPD folder has a single 3.0.1-3 folder in it, so let's use that explictly
             # hopefully this will be changed to an explicit entry in the manifest.json file
-            builtin_rules_path = str(rule_set[1] + sep + 'lightspd' + sep + 'builtins' + sep + '3.0.1-3')
+            builtin_rules_path = str(rule_set[1] + sep + 'lightspd' + sep + 'builtins' + sep + '3.0.0-264')
+
             r = get_text_rules_from_folder(builtin_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'builtin')
             p = get_policy_from_file(builtin_rules_path + sep + gc.ips_policy)
 
