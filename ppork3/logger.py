@@ -35,24 +35,46 @@ DEFAULT_HALT_ON_WARN = True
 class Logger(object):
 
     # Set global defaults
-    level = DEFAULT_LEVEL
-    halt_on_warn = DEFAULT_HALT_ON_WARN
+    _level = DEFAULT_LEVEL
+    _halt_on_warn = DEFAULT_HALT_ON_WARN
 
     def __init__(self, level=None, halt_on_warn=None):
 
         # Allow overrides to global defaults during instantiation
         if level is not None:
-            self.set_level(level)
+            self.level = level
         if halt_on_warn is not None:
-            self.set_halt_on_warn(halt_on_warn)
+            self.halt_on_warn = halt_on_warn
+
+    # Ensure the properties changes affect the values globally
 
     @classmethod
-    def set_level(cls, level):
+    def _set_level(cls, level):
         cls.level = level
 
     @classmethod
-    def set_halt_on_warn(cls, halt_on_warn):
+    def _set_halt_on_warn(cls, halt_on_warn):
         cls.halt_on_warn = halt_on_warn
+
+    # Properties
+
+    @property
+    def level(self):
+        return self._level
+
+    @level.setter
+    def level(self, level):
+        self._set_level(level)
+
+    @property
+    def halt_on_warn(self):
+        return self._halt_on_warn
+
+    @halt_on_warn.setter
+    def halt_on_warn(self, halt_on_warn):
+        self._set_halt_on_warn(halt_on_warn)
+
+    # Logging methods
 
     def error(self, msg):
 

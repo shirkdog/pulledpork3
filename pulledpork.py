@@ -26,7 +26,6 @@ from os import environ, listdir, scandir, mkdir
 from os.path import isfile, join, sep, abspath, basename, isdir
 from platform import platform, version, uname, system, python_version, architecture
 from re import search, sub, match
-from requests import get
 from shutil import rmtree, copy             # remove directory tree, python 3.4+
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
@@ -34,6 +33,8 @@ from tarfile import open as open_tar        # to extract tgz ruleset file
 from tempfile import gettempdir             # temp directory mgmt
 from time import strftime, localtime
 from urllib.parse import urlsplit           # get filename from url
+
+import requests
 
 from ppork3 import logger                   # Our logging helper (for now)
 
@@ -149,14 +150,14 @@ def main():
     #         will override less verbose ones. Priority order:
     #               DEFAULT (info) < quiet < verbose < debug
     if gc.args.quiet:
-        log.set_level(logger.Levels.WARNING)
+        log.level = logger.Levels.WARNING
     if gc.args.verbose:
-        log.set_level(logger.Levels.VERBOSE)
+        log.level = logger.Levels.VERBOSE
     if gc.args.debug:
-        log.set_level(logger.Levels.DEBUG)
+        log.level = logger.Levels.DEBUG
 
     # Also setup halt on warn as requested
-    log.set_halt_on_warn(not gc.args.ignore_warn)
+    log.halt_on_warn = not gc.args.ignore_warn
 
     # Always show pigs flying as the preamble, regardless of verbosity
     flying_pig_banner()
@@ -931,7 +932,7 @@ def download_rulesets(urls):
 
         log.info('Downloading ruleset file: ' + filename + ' from: ' + url[1])
 
-        r = get(url[1])
+        r = requests.get(url[1])
 
         # Retrieve HTTP meta-data
         # print("\t" + r.status_code)
@@ -1192,7 +1193,7 @@ def get_blocklists(start_time, urls):
         log.verbose("- Downloading " + url)
         # todo: error check
         try:
-            r = get(url)
+            r = requests.get(url)
         except Exception as e:
             log.warning('* Error downloading URL: ' + str(e))
 
