@@ -719,9 +719,9 @@ def validate_configuration():
             log(LOGLEVEL.WARNING, "Missing section [rulesets] in configuration file.  No rulesets can be downloaded")
 
         # log warning if downloading multiple snort rulesets (only 1 recommended)
-        if any([gc.config['rulesets'].getboolean('registered_ruleset'),
-                gc.config['rulesets'].getboolean('LightSPD_ruleset'),
-                gc.config['rulesets'].getboolean('community_ruleset')]):
+        if [gc.config['rulesets'].getboolean('registered_ruleset'),
+            gc.config['rulesets'].getboolean('LightSPD_ruleset'),
+            gc.config['rulesets'].getboolean('community_ruleset')].count(True) > 1:
             log(LOGLEVEL.WARNING, "You have specified more than one Ruleset from Snort/Talos. This is not recommended (community, registered, and LightSPD have a lot of overlap).")
 
         # make sure we are getting rules from somewhere (local.rules, snort ruleset, or URL(todo))
