@@ -50,11 +50,11 @@ class Logger(object):
 
     @classmethod
     def _set_level(cls, level):
-        cls.level = level
+        cls._level = level
 
     @classmethod
     def _set_halt_on_warn(cls, halt_on_warn):
-        cls.halt_on_warn = halt_on_warn
+        cls._halt_on_warn = halt_on_warn
 
     # Properties
 
