@@ -149,14 +149,14 @@ def main():
     #         will override less verbose ones. Priority order:
     #               DEFAULT (info) < quiet < verbose < debug
     if gc.args.quiet:
-        log.level = logger.Levels.WARNING
+        log.set_level(logger.Levels.WARNING)
     if gc.args.verbose:
-        log.level = logger.Levels.VERBOSE
+        log.set_level(logger.Levels.VERBOSE)
     if gc.args.debug:
-        log.level = logger.Levels.DEBUG
+        log.set_level(logger.Levels.DEBUG)
 
     # Also setup halt on warn as requested
-    log.halt_on_warn = not gc.args.ignore_warn
+    log.set_halt_on_warn(not gc.args.ignore_warn)
 
     # Always show pigs flying as the preamble, regardless of verbosity
     flying_pig_banner()

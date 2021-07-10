@@ -42,9 +42,17 @@ class Logger(object):
 
         # Allow overrides to global defaults during instantiation
         if level is not None:
-            self.level = level
+            self.set_level(level)
         if halt_on_warn is not None:
-            self.halt_on_warn = halt_on_warn
+            self.set_halt_on_warn(halt_on_warn)
+
+    @classmethod
+    def set_level(cls, level):
+        cls.level = level
+
+    @classmethod
+    def set_halt_on_warn(cls, halt_on_warn):
+        cls.halt_on_warn = halt_on_warn
 
     def error(self, msg):
 
