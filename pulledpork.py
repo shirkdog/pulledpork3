@@ -99,6 +99,9 @@ def main():
         log.level = logger.Levels.VERBOSE
     if gc.args.debug:
         log.level = logger.Levels.DEBUG
+
+    # Print the env?
+    if gc.args.verbose or gc.args.debug:
         print_environment(gc)
 
     # Also setup halt on warn as requested
