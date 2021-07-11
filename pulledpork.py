@@ -21,29 +21,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 from argparse import ArgumentParser         # command line parameters parser
 from configparser import ConfigParser       # to parse the conf file
-from enum import IntEnum                    # enum type, introduced in python 3.4.
 from json import load                       # to load json manifest file in lightSPD
 from os import environ, listdir, scandir, mkdir
 from os.path import isfile, join, sep, abspath, basename, isdir
 from platform import platform, version, uname, system, python_version, architecture
 from re import search, sub, match
-from requests import get
 from shutil import rmtree, copy             # remove directory tree, python 3.4+
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
 from tarfile import open as open_tar        # to extract tgz ruleset file
 from tempfile import gettempdir             # temp directory mgmt
-from time import strftime, localtime
 from urllib.parse import urlsplit           # get filename from url
+
+# Third-party libraries
+import requests
+
+# Our PulledPork3 internal libraries
+from lib import config, logger
 
 
 # -----------------------------------------------------------------------------
 #   GLOBAL CONSTANTS
 # -----------------------------------------------------------------------------
 
-VERSION_NUMBER = '3.0.0-BETA'
-SCRIPT_NAME = 'Pulledpork'
+__version__ = '3.0.0-BETA'
+
+SCRIPT_NAME = 'PulledPork'
 TAGLINE = 'Lowcountry yellow mustard bbq sauce is the best bbq sauce. Fight me.'
+VERSION_STR = f'{SCRIPT_NAME} v{__version__}'
 
 # URLs for supported rulesets (replace <version> and <oinkcode> when downloading)
 RULESET_URL_SNORT_COMMUNITY = 'https://snort.org/downloads/community/snort3-community-rules.tar.gz'
@@ -60,60 +65,11 @@ ET_BLOCKLIST_URL = 'http://rules.emergingthreatspro.com/fwrules/emerging-Block-I
 
 
 # -----------------------------------------------------------------------------
-#   Class for GlobalConfiguration
+#   Prepare the logging and config
 # -----------------------------------------------------------------------------
 
-gc = ''  # global variable so we can reach this anywhere
-
-
-class GlobalConfiguration:
-    def __init__(self):
-        self.verbose        = LOGLEVEL.INFO  # the verbosity setting (LOGLEVEL.x [QUIET,DEBUG,VERBOSE,INFO])  # noqa
-        self.start_time     = strftime('%Y.%m.%d-%H.%M.%S' , localtime())  # noqa
-
-        self.tempdir        = ''        # path to our temp working directory  # noqa
-        self.delete_tempdir = True      # should the tempdir be deleted on exit
-
-        self.args           = ''        # command-line arguments from argparse  # noqa
-        self.config         = ''        # config file values, parsed by ConfigParser  # noqa
-
-        self.halt_on_warn   = True      # terminate on warning  # noqa
-
-        self.snort_version  = ''                # snort version (from config or determined programmatically)  # noqa
-        self.ips_policy     = 'connectivity'    # what rules should be enabled/disabled by policy  # noqa
-        self.distro         = None              # distro needed for precompiled so rules  # noqa
-        self.rules_outfile  = ''                # where to write combined rules file  # noqa
-        self.include_disabled_rules = False     # should disabled rules be included in output
-        self.process_so_rules = False           # are we processing so rules
-        self.sorule_path    = ''                # where to copy so rules  # noqa
-        self.ignore_rules_files = []            # what filenames to ignore in the rulesets
-
-        self.bocklist_outfile = ''          # where to output our combined blocklist file  # noqa
-
-        self.oinkcode       = None          # snort oninkcode for downloading rulesets and filtering out of output  # noqa
-        self.print_oinkcode = False         # should the Oinkcode be included in the output (usually no)
-
-        self.rule_mode      = 'simple'      # 'simple' or 'policy': how should rules be enabled in the output  # noqa
-        self.policy_path    = None          # where to write the policy file if rule_mode is 'policy'  # noqa
-
-
-def pigsflying():
-    '''
-    OMG We MUST HAVE FLYING PIGS! The community demands it.
-    '''
-
-    # For now simple printing, will need to clean this up
-    print("\n    https://github.com/shirkdog/pulledpork3")
-    print("      _____ ____")
-    print("     `----,\\    )")
-    print("      `--==\\\\  /    PulledPork v{} - {}".format(VERSION_NUMBER, TAGLINE))
-    print("       `--==\\\\/")
-    print("     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk")
-    print("  @_/        /  66\\_  and the PulledPork Team!")
-    print("    |    \\   \\   _(\")")
-    print("     \\   /-| ||'--'  Rules give me wings!")
-    print("      \\_\\  \\_\\\\")
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+log = logger.Logger()
+gc = config.Config()
 
 
 # -----------------------------------------------------------------------------
@@ -122,91 +78,89 @@ def pigsflying():
 
 def main():
 
-    # Create a place for all global config items
-    global gc
-    gc = GlobalConfiguration()
-
     # parse our command-line args with ArgParse
     gc.args = parse_argv()
 
     # if the -V flag (version) was passed: Print the script Version and Exit
     if gc.args.version:
-        print("{} v{} - {}".format(SCRIPT_NAME, VERSION_NUMBER, TAGLINE))
+        print(VERSION_STR)
         exit(0)
 
-    # -----------------------------------------------------------------------------
-    # Determine verbosity level for output and print the environment if 'DEBUG'
-    if gc.args.verbose:
-        gc.verbose = LOGLEVEL.VERBOSE
-    elif gc.args.debug:
-        gc.verbose = LOGLEVEL.DEBUG
-        printEnviornment(gc)
-    elif gc.args.quiet:
-        gc.verbose = LOGLEVEL.WARNING
-    else:
-        gc.verbose = LOGLEVEL.INFO
-
     # Always show pigs flying as the preamble, regardless of verbosity
-    pigsflying()
+    flying_pig_banner()
+
+    # Setup logging as requested
+    #   NOTE: For now all the args are permitted, but specifying more than one
+    #         will override less verbose ones. Priority order:
+    #               DEFAULT (info) < quiet < verbose < debug
+    if gc.args.quiet:
+        log.level = logger.Levels.WARNING
+    if gc.args.verbose:
+        log.level = logger.Levels.VERBOSE
+    if gc.args.debug:
+        log.level = logger.Levels.DEBUG
+
+    # Print the env
+    print_environment(gc)
+
+    # Also setup halt on warn as requested
+    log.halt_on_warn = not gc.args.ignore_warn
 
     # Load the configuration File from command line (-c FILENAME). Verify exists, and only 1 entry.
     if not gc.args.configuration:
-        log(LOGLEVEL.ERROR, "The following arguments are required: -c/--configuration <file>")
+        log.error("The following arguments are required: -c/--configuration <file>")
     if len(gc.args.configuration) > 1:
-        log(LOGLEVEL.WARNING, 'Multiple entries passed as -c/--configuration.  Only a single entry permitted.')
+        log.warning('Multiple entries passed as -c/--configuration.  Only a single entry permitted.')
 
     config_file = gc.args.configuration[0]  # this is a list of one element
-    log(LOGLEVEL.INFO, 'Loading configuration file: ' + config_file)
+    log.info('Loading configuration file: ' + config_file)
 
     # load configuration file into config variable with ConfigParser
     gc.config = ConfigParser(delimiters=('='))
     try:
         gc.config.read_file(open(config_file, "r"))
     except Exception as e:
-        log(LOGLEVEL.ERROR, "Can not load required configuration file. Error: " + str(e))
+        log.error("Can not load required configuration file. Error: " + str(e))
 
     # if we are given an oinkcode, we must save it to the gc.oinkcode variable
     # so we can filter it out from printed output (in our 'log' function)
     if gc.config.has_option('rulesets', 'oinkcode'):
         gc.oinkcode = gc.config['rulesets']['oinkcode']
 
-    log(LOGLEVEL.DEBUG, 'After parsing configuration file, the Dictionary returned is:')
+    log.debug('After parsing configuration file, the Dictionary returned is:')
     for sect in gc.config.sections():
-        log(LOGLEVEL.DEBUG, "\tSection: " + sect)
+        log.debug("\tSection: " + sect)
         for k, v in gc.config.items(sect):
-            log(LOGLEVEL.DEBUG, "\t\tKey: " + k + "\tValue: " + v)
+            log.debug("\t\tKey: " + k + "\tValue: " + v)
 
-    # do we exit on warning? (defaults to TRUE)
-    gc.halt_on_warn = not gc.args.ignore_warn
-
-    # -----------------------------------------------------------------------------
     # Validate configuration file (logical validation of settings; error out if issue)
     #   determine fields for GC from command line and config file, save in global gc
     # todo: join these two functions into single function
     validate_configuration()
     determine_configuration_options()
 
-    # -----------------------------------------------------------------------------
-    # Create a temp working directory (path stored as a string)
-    gc.tempdir = getTempDirectory(gc.start_time)
-    log(LOGLEVEL.VERBOSE, "Temporary working directory is: " + gc.tempdir)
+    # Update logging if we're not printing the oinkcode
+    if not gc.print_oinkcode:
+        log.add_hidden_string(gc.oinkcode)
 
-    # -----------------------------------------------------------------------------
+    # Create a temp working directory (path stored as a string)
+    gc.tempdir = get_temp_directory(gc.start_time)
+    log.verbose("Temporary working directory is: " + gc.tempdir)
+
     # Determine a set of required info, from config file or from the computer itself
-    gc.snort_version = getSnortVersion()
+    gc.snort_version = get_snort_version()
     gc.distro = get_distro()
     gc.ips_policy = get_policy()
 
     # we now have all required info to run, print the configuration to screen
     print_operational_settings()
 
-    # -----------------------------------------------------------------------------
     # Obtain the archived ruleset (tgz) files
     # either from online sources or from a local folder
     local_rulesets = []  # list of full file paths to tgz files (local filenames or the path to the tgz files after download)
 
     if gc.args.file:
-        log(LOGLEVEL.DEBUG, "Using one file for ruleset source (not downloading rulesets): " + gc.args.file)
+        log.debug("Using one file for ruleset source (not downloading rulesets): " + gc.args.file)
         # determine ruleset type from filename
         if 'snort3-community-rules' in gc.args.file:
             local_rulesets.append(('SNORT_COMMUNITY', gc.args.file))
@@ -218,7 +172,7 @@ def main():
             local_rulesets.append(('UNKNOWN', gc.args.file))
 
     elif gc.args.folder:
-        log(LOGLEVEL.DEBUG, "Using all files for ruleset source (not downloading) from: " + gc.args.folder)
+        log.debug("Using all files for ruleset source (not downloading) from: " + gc.args.folder)
         for path in listdir(gc.args.folder):
             full_path = join(gc.args.folder, path)
             if isfile(full_path) and (full_path.endswith('tar.gz') or (full_path.endswith('tgz'))):
@@ -243,7 +197,7 @@ def main():
     extracted_rulesets = untar_rulesets(local_rulesets)
 
     if not extracted_rulesets:
-        log(LOGLEVEL.WARNING, "No Extracted Ruleset folders found.")
+        log.warning("No Extracted Ruleset folders found.")
 
     # PROCESS RULESETS HERE
     # extracted_rulesets is a list of tuples. Each tuple represents a folder in the temp directory
@@ -256,8 +210,8 @@ def main():
     # other_policies = []         # todo: if policies_path is set (write other policies files)
 
     for rule_set in extracted_rulesets:
-        log(LOGLEVEL.DEBUG, '---------------------------------')
-        log(LOGLEVEL.DEBUG, "Working on Ruleset: " + rule_set[0] + ' - ' + rule_set[1])
+        log.debug('---------------------------------')
+        log.debug("Working on Ruleset: " + rule_set[0] + ' - ' + rule_set[1])
 
         # determine ruleset type:
         if rule_set[0] == 'SNORT_COMMUNITY':
@@ -272,7 +226,7 @@ def main():
                     rule['rule'] = s['rule']
 
             all_rules.extend(r)
-            log(LOGLEVEL.VERBOSE, str(len(r)) + ' actual rules found in Community ruleset')
+            log.verbose(str(len(r)) + ' actual rules found in Community ruleset')
 
         elif rule_set[0] == 'SNORT_REGISTERED':
 
@@ -352,7 +306,7 @@ def main():
                 json_manifest_file = rule_set[1] + sep + 'lightspd' + sep + 'manifest.json'
 
                 # load json manfiest file to identify .so rules location
-                log(LOGLEVEL.VERBOSE, 'Processing json manifest file ' + json_manifest_file)
+                log.verbose('Processing json manifest file ' + json_manifest_file)
                 with open(json_manifest_file) as f:
                     manifest = load(f)
 
@@ -362,10 +316,10 @@ def main():
 
                 manifest_versions = sorted(manifest_versions, reverse=True)
 
-                log(LOGLEVEL.DEBUG, 'Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file: ' + str(manifest_versions))
+                log.debug('Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file: ' + str(manifest_versions))
 
                 # find version number in the json file that is the largest number just below or equal to the version of snort3.
-                log(LOGLEVEL.DEBUG, 'Looking for a version in the manifest file that is less than or equal to our current snort Version: ' + gc.snort_version)
+                log.debug('Looking for a version in the manifest file that is less than or equal to our current snort Version: ' + gc.snort_version)
                 version_to_use = None
                 for v in manifest_versions:
                     if v <= gc.snort_version:
@@ -373,18 +327,18 @@ def main():
                         break
 
                 if version_to_use is None:
-                    log(LOGLEVEL.WARNING, "Not able to find a valid snort version in the lightSPD manifest file. not processing any SO rules from the lightSPD package.")
+                    log.warning("Not able to find a valid snort version in the lightSPD manifest file. not processing any SO rules from the lightSPD package.")
                 else:
-                    log(LOGLEVEL.DEBUG, "Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is: ' + gc.snort_version)
+                    log.debug("Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is: ' + gc.snort_version)
                     # get other data from manifest file for the selected version
                     policies_path = manifest["snort versions"][version_to_use]['policies_path']
                     policies_path = policies_path.replace('/', sep)
-                    log(LOGLEVEL.DEBUG, 'policies_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + policies_path)
+                    log.debug('policies_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + policies_path)
 
                     # todo: try/catch next line in case the arch. doesn't exist
                     modules_path = manifest["snort versions"][version_to_use]['architectures'][gc.distro]["modules_path"]
                     modules_path = modules_path.replace('/', sep)
-                    log(LOGLEVEL.DEBUG, 'modules_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + modules_path)
+                    log.debug('modules_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + modules_path)
 
                     # copy so files from our archive to working folder
                     so_src_folder = rule_set[1] + 'lightspd' + sep + modules_path + sep + 'so_rules' + sep
@@ -404,7 +358,7 @@ def main():
                     p = get_policy_from_file(so_rules_path + sep + gc.ips_policy)
                     pol.extend(p)
 
-                log(LOGLEVEL.DEBUG, "Completed loading lightSPD Ruleset .so rules. " + str(len(r)) + ' rules found')
+                log.debug("Completed loading lightSPD Ruleset .so rules. " + str(len(r)) + ' rules found')
 
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
@@ -415,7 +369,7 @@ def main():
             r = get_text_rules_from_folder(text_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'text')
             p = get_policy_from_file(text_rules_path + sep + gc.ips_policy)
 
-            log(LOGLEVEL.DEBUG, "Completed loading lightSPD Ruleset text rules. " + str(len(r)) + ' rules found')
+            log.debug("Completed loading lightSPD Ruleset text rules. " + str(len(r)) + ' rules found')
             rules.extend(r)
             pol.extend(p)
 
@@ -426,7 +380,7 @@ def main():
             r = get_text_rules_from_folder(builtin_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'builtin')
             p = get_policy_from_file(builtin_rules_path + sep + gc.ips_policy)
 
-            log(LOGLEVEL.DEBUG, "Completed loading lightSPD Ruleset builtin rules. " + str(len(r)) + ' rules found')
+            log.debug("Completed loading lightSPD Ruleset builtin rules. " + str(len(r)) + ' rules found')
             rules.extend(r)
             pol.extend(p)
 
@@ -463,7 +417,7 @@ def main():
             all_rules.extend(rules)
 
         else:
-            log(LOGLEVEL.WARNING, "Unknown ruleset archive folder recieved.")
+            log.warning("Unknown ruleset archive folder recieved.")
             # TODO: non-standard ruleset, we need to figure it out
 
     # all_rules = [] # list of rule_dicts. each entry is a individual rule with associated metadata.
@@ -476,19 +430,19 @@ def main():
     #       enabled         = boolean - if the rule is enabled based on policy (registered) or commented out (community)
     #  }
 
-    log(LOGLEVEL.DEBUG, "There are " + str(len(all_rules)) + ' rules after downloading and processing all rulesets.')
+    log.debug("There are " + str(len(all_rules)) + ' rules after downloading and processing all rulesets.')
 
     # load any local.rules and add to rules list
     local_rules = load_local_rules()
 
     all_rules.extend(local_rules)
-    log(LOGLEVEL.DEBUG, "There are " + str(len(all_rules)) + ' rules after loading local rules files.')
+    log.debug("There are " + str(len(all_rules)) + ' rules after loading local rules files.')
 
     # modify rules based on LARK (todo)
     # Convert rules from string to dict (todo: can we keep this as a parse tree and work on it?)
     '''
     rules = objectify_rules(rules)
-    log(LOGLEVEL.DEBUG, "There are " + str(len(rules)) + ' rules (dict) after converting rule strings to dicts.' )
+    log.debug("There are " + str(len(rules)) + ' rules (dict) after converting rule strings to dicts.' )
 
     -----------------------------------------------------------------------------
     Post-process rules (todo) -> create DSL and parse this way
@@ -501,24 +455,24 @@ def main():
     this is how i'll apply a DSL to the rules for enable/disable (or operate on parse tree)
     for rule in rules:
        rule['enabled'] = True
-    log(LOGLEVEL.DEBUG, "We have " + str(len(rules)) + ' enabled rule objects.' )
+    log.debug("We have " + str(len(rules)) + ' enabled rule objects.' )
 
     Remove disabled rules from output if requested by user.
     if not gc.include_disabled_rules:
-       log(LOGLEVEL.VERBOSE, "Removing disabled rules from output.")
+       log.verbose("Removing disabled rules from output.")
        rules = list(filter(lambda d: d['enabled'], rules))
-       log(LOGLEVEL.DEBUG, "There are " + str(len(rules)) + ' rules after removing disabled rules.' )
+       log.debug("There are " + str(len(rules)) + ' rules after removing disabled rules.' )
 
     convert rules from dict back to string
     rules = stringify_rules(all_rules)
-    log(LOGLEVEL.DEBUG, "There are " + str(len(rules)) + ' rules (string) after converting rules from dict to string.' )
+    log.debug("There are " + str(len(rules)) + ' rules (string) after converting rules from dict to string.' )
     '''
 
     # Prepare rules for output
 
     # remove disabled rules if not including them in the output
     if not gc.include_disabled_rules:
-        log(LOGLEVEL.DEBUG, "Removing disabled rules from output")
+        log.debug("Removing disabled rules from output")
         all_rules = [r for r in all_rules if r['enabled']]
 
     #   OUTPUT
@@ -549,7 +503,7 @@ def main():
 
     # -----------------------------------------------------------------------------
     # Download Blocklists
-    log(LOGLEVEL.INFO, "Preparing to process blocklists.")
+    log.info("Preparing to process blocklists.")
     bloclist_urls = get_blocklist_urls()
     blocklist_entries = get_blocklists(gc.start_time, bloclist_urls)
 
@@ -570,19 +524,19 @@ def main():
     # -----------------------------------------------------------------------------
     # Delete temp dir
     if not gc.delete_tempdir:
-        log(LOGLEVEL.VERBOSE, "Not deleting temporary working directory: " + gc.tempdir)
+        log.verbose("Not deleting temporary working directory: " + gc.tempdir)
     else:
-        log(LOGLEVEL.VERBOSE, "Attempting to delete temporary working directory: " + gc.tempdir)
+        log.verbose("Attempting to delete temporary working directory: " + gc.tempdir)
         try:
             rmtree(gc.tempdir)
         except OSError as e:
-            log(LOGLEVEL.WARNING, "Warning: Can't delete temporary working directory: " + e.filename + '.  Error is: ' + e.strerror)
+            log.warning("Warning: Can't delete temporary working directory: " + e.filename + '.  Error is: ' + e.strerror)
         else:
-            log(LOGLEVEL.VERBOSE, "Successfully deleted temporary working directory: " + gc.tempdir)
+            log.verbose("Successfully deleted temporary working directory: " + gc.tempdir)
 
     # -----------------------------------------------------------------------------
     # END Program Execution (main function)
-    log(LOGLEVEL.INFO, 'Program execution complete.')
+    log.info('Program execution complete.')
 
 # *****************************************************************************
 # *****************************************************************************
@@ -595,59 +549,33 @@ def main():
 # *****************************************************************************
 
 
-# -----------------------------------------------------------------------------
-#   FUNCTION log (log data) + enum for loglevels
-# -----------------------------------------------------------------------------
-
-# ENUM type for errorlevels
-class LOGLEVEL(IntEnum):
-    ERROR = -1
-    WARNING = 0
-    INFO = 1
-    VERBOSE = 2
-    DEBUG = 3
-
-
-# enum colors for terminal color output
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'  # a nice yellowish warning
-    FAIL = '\033[91m'       # RED
-    ENDC = '\033[0m'    # end the color (end of line)
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
-
-def log(level=LOGLEVEL.VERBOSE, msg=''):
+def flying_pig_banner():
     '''
-    todo: delete tempdir on exit (check if exists)
+    OMG We MUST HAVE FLYING PIGS! The community demands it.
     '''
 
-    if LOGLEVEL(level) == LOGLEVEL.ERROR:
-        print(bcolors.FAIL + "ERROR: " + msg + bcolors.ENDC)
-        # fatal, exit
-        exit(msg)
+    # For now simple printing, will need to clean this up
+    print(f"""
+    https://github.com/shirkdog/pulledpork3
+      _____ ____
+     `----,\\    )
+      `--==\\\\  /    {VERSION_STR} - {TAGLINE}
+       `--==\\\\/
+     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk
+  @_/        /  66\\_  and the PulledPork Team!
+    |    \\   \\   _(\")
+     \\   /-| ||'--'  Rules give me wings!
+      \\_\\  \\_\\\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~""")
 
-    if LOGLEVEL(level) == LOGLEVEL.WARNING:
-        msg = bcolors.WARNING + "WARNING: " + msg + bcolors.ENDC
-        if gc.halt_on_warn:
-            exit(msg)
 
-    if level <= gc.verbose:
-        if gc.oinkcode and not gc.print_oinkcode:  # TODO, move to GC
-            msg = msg.replace(gc.oinkcode, '<oinkcode hidden in output>')
-        print(msg)
-
-# -----------------------------------------------------------------------------
-#   FUNCTION to get command line arguments into global argparser variable
-# -----------------------------------------------------------------------------
 def parse_argv():
+    '''
+    Get command line arguments into global argparser variable
+    '''
 
     # Parse command-line arguments
-    arg_parser = ArgumentParser(description="{} v{} - {}".format(SCRIPT_NAME, VERSION_NUMBER, TAGLINE))
+    arg_parser = ArgumentParser(description=f'{VERSION_STR} - {TAGLINE}')
 
     # we want Quiet or Verbose (v, vv), can't have more than one (but we can have none)
     group_verbosity = arg_parser.add_mutually_exclusive_group()
@@ -669,72 +597,73 @@ def parse_argv():
 
     return arg_parser.parse_args()
 
-# -----------------------------------------------------------------------------
-#   FUNCTION to validate the command line params and the config file (-c <file>)
-#   also determine the flags and params here
-# -----------------------------------------------------------------------------
-def validate_configuration():
 
-    log(LOGLEVEL.VERBOSE, "Validating input configuration file settings.")
+def validate_configuration():
+    '''
+    Validate the command line params and the config file (-c <file>)
+    also determine the flags and params here
+    '''
+
+    log.verbose("Validating input configuration file settings.")
 
     # Validate Section: CONFIGURATION
     # required: [configuration]rule_path -> where to save combined rules file
     if not gc.config.has_option('configuration', 'rule_path'):
-        log(LOGLEVEL.ERROR, "Required rule_path in [configuration] section is missing.")
+        log.error("Required rule_path in [configuration] section is missing.")
 
     # is our oinkcode valid format?
     if gc.oinkcode is not None and len(gc.oinkcode) != 40:
-        log(LOGLEVEL.WARNING, "Oinkcode does not seem to be the correct format.")
+        log.warning("Oinkcode does not seem to be the correct format.")
 
     # do we know how to write enabled rules?
     if gc.config.has_option('configuration', 'rule_mode'):
         if gc.config['configuration']['rule_mode'] != 'simple' and gc.config['configuration']['rule_mode'] != 'policy':
-            log(LOGLEVEL.ERROR, '"rule_mode" is not set or is an invalid value. value is: ' + gc.config['configuration']['rule_mode'])
+            log.error('"rule_mode" is not set or is an invalid value. value is: ' + gc.config['configuration']['rule_mode'])
 
     # if rule_mode == policy, do we have an output path
     if gc.config['configuration']['rule_mode'] == 'policy' and not gc.config.has_option('configuration', 'policy_path'):
-        log(LOGLEVEL.ERROR, '"policy_path" is not set. this is required when rule_mode is "policy".')
+        log.error('"policy_path" is not set. this is required when rule_mode is "policy".')
 
     # Validate Section: RULESETS
 
     # are we getting rulesets from local file (command line) or from online (config file)
     if gc.args.file or gc.args.folder:
-        log(LOGLEVEL.VERBOSE, "Rulesets will be loaded from local system, not online sources.")
+        log.verbose("Rulesets will be loaded from local system, not online sources.")
 
         # valide command line args (other than ones checked by argparser)
         if gc.args.file and not isfile(gc.args.file):
-            log(LOGLEVEL.ERROR, "File path passed by -f is not a file or does not exist: " + gc.args.file)
+            log.error("File path passed by -f is not a file or does not exist: " + gc.args.file)
 
         if gc.args.folder:
             if not isdir(gc.args.folder):
-                log(LOGLEVEL.ERROR, "Folder path passed by -F is not a folder or does not exist: " + gc.args.folder)
+                log.error("Folder path passed by -F is not a folder or does not exist: " + gc.args.folder)
             if not listdir(gc.args.folder):
-                log(LOGLEVEL.ERROR, "Folder path passed by -F contains no files.")
+                log.error("Folder path passed by -F contains no files.")
     else:
-        log(LOGLEVEL.DEBUG, "Rulesets will be downloaded from online sources (not the local filesystem).")
+        log.debug("Rulesets will be downloaded from online sources (not the local filesystem).")
 
         # We are not using local rulesets, so we need online rulesets (note, user might only want blocklists,
         # so this is a warning that can be overridden.)
         if not gc.config.has_section('rulesets'):
-            log(LOGLEVEL.WARNING, "Missing section [rulesets] in configuration file.  No rulesets can be downloaded")
+            log.warning("Missing section [rulesets] in configuration file.  No rulesets can be downloaded")
 
         # log warning if downloading multiple snort rulesets (only 1 recommended)
         if [gc.config['rulesets'].getboolean('registered_ruleset'),
             gc.config['rulesets'].getboolean('LightSPD_ruleset'),
             gc.config['rulesets'].getboolean('community_ruleset')].count(True) > 1:
-            log(LOGLEVEL.WARNING, "You have specified more than one Ruleset from Snort/Talos. This is not recommended (community, registered, and LightSPD have a lot of overlap).")
+            log.warning("You have specified more than one Ruleset from Snort/Talos. This is not recommended (community, registered, and LightSPD have a lot of overlap).")
 
         # make sure we are getting rules from somewhere (local.rules, snort ruleset, or URL(todo))
         if not any([gc.config['rulesets'].getboolean('registered_ruleset'),
                     gc.config['rulesets'].getboolean('LightSPD_ruleset'),
                     gc.config['rulesets'].getboolean('community_ruleset'),
                     gc.config.has_option('configuration', 'local_rules')]):
-            log(LOGLEVEL.WARNING, "No rulesets have been specified for download. Rule Processing won't happen.")
+            log.warning("No rulesets have been specified for download. Rule Processing won't happen.")
 
         # if we are downloading the registered or lightSPD ruleset, we also require a oinkcode
         if gc.config['rulesets'].getboolean('registered_ruleset') or gc.config['rulesets'].getboolean('LightSPD_ruleset'):
             if not gc.config.has_option('rulesets', 'oinkcode'):
-                log(LOGLEVEL.ERROR, "Oinkcode is requred for the registered or LightSPD rulesets. These will not be downloaded.")
+                log.error("Oinkcode is requred for the registered or LightSPD rulesets. These will not be downloaded.")
 
         # todo: ET RULESETS
 
@@ -747,9 +676,9 @@ def validate_configuration():
     # TODO: test if [blocklist] does not exist
     if any([gc.config['blocklist'].getboolean('snort_blocklist'),
             gc.config['blocklist'].getboolean('et_blocklist')]) and gc.bocklist_outfile is None:
-        log(LOGLEVEL.ERROR, "No block_list_path specified in configuration. This is required if you are downloading blocklists.")
+        log.error("No block_list_path specified in configuration. This is required if you are downloading blocklists.")
 
-    log(LOGLEVEL.VERBOSE, "Done Validating input configuration file settings. No fatal errors.")
+    log.verbose("Done Validating input configuration file settings. No fatal errors.")
 
 
 def determine_configuration_options():
@@ -760,7 +689,7 @@ def determine_configuration_options():
     todo: remove quotes from file paths
     '''
 
-    log(LOGLEVEL.DEBUG, "Entering Function determine_configuration_options()")
+    log.debug("Entering Function determine_configuration_options()")
 
     # do we print the oinkcode in the output
     gc.print_oinkcode = gc.args.print_oinkcode
@@ -784,7 +713,7 @@ def determine_configuration_options():
         if gc.config.has_option('configuration', 'policy_path'):
             gc.policy_path = gc.config['configuration']['policy_path'].lower()
         else:
-            log(LOGLEVEL.ERROR, '"policy_path" not specified, but is required when "rule_mode" is "policy".')
+            log.error('"policy_path" not specified, but is required when "rule_mode" is "policy".')
 
     # are we processing SO rules?
     if gc.config.has_option('configuration', 'process_so_rules'):
@@ -793,7 +722,7 @@ def determine_configuration_options():
         if gc.config.has_option('configuration', 'sorule_path'):
             gc.sorule_path = gc.config['configuration']['sorule_path']
         else:
-            log(LOGLEVEL.ERROR, '"sorule_path" is required when "process_so_rules" is set to "true".')
+            log.error('"sorule_path" is required when "process_so_rules" is set to "true".')
 
     # get list of filenames to ignore in a ruleset
     if gc.config.has_option('rulesets', 'ignore_files'):
@@ -805,7 +734,7 @@ def determine_configuration_options():
     # todo: this may not exist if not processing blocklists
     gc.bocklist_outfile = gc.config['blocklist']['block_list_path']
 
-    log(LOGLEVEL.DEBUG, "Exiting Function determine_configuration_options()")
+    log.debug("Exiting Function determine_configuration_options()")
 
 
 def print_operational_settings():
@@ -813,96 +742,96 @@ def print_operational_settings():
     Print all the operational settings after parsing (what we will do)
     '''
 
-    log(LOGLEVEL.VERBOSE, '------------------------------------------------------------')
-    log(LOGLEVEL.VERBOSE, "After parsing the command line and configuration file, this is what I know:")
+    log.verbose('------------------------------------------------------------')
+    log.verbose("After parsing the command line and configuration file, this is what I know:")
 
     # halt-on-error
     if gc.halt_on_warn:
-        log(LOGLEVEL.VERBOSE, 'Program will terminate when encountering an error or warning.')
+        log.verbose('Program will terminate when encountering an error or warning.')
     else:
-        log(LOGLEVEL.VERBOSE, 'Warnings will not cause this program to terminate (damn the torpedos, full speed ahead!).')
+        log.verbose('Warnings will not cause this program to terminate (damn the torpedos, full speed ahead!).')
 
     # are we printing oinkcode?
     if gc.print_oinkcode:
-        log(LOGLEVEL.VERBOSE, 'Oinkcode will NOT be obfuscated in the output (do not share your oinkcode).')
+        log.verbose('Oinkcode will NOT be obfuscated in the output (do not share your oinkcode).')
     else:
-        log(LOGLEVEL.VERBOSE, 'Oinkcode will be obfuscated in the output (this is a good thing).')
+        log.verbose('Oinkcode will be obfuscated in the output (this is a good thing).')
 
     # Temp dir management
-    log(LOGLEVEL.VERBOSE, 'Temporary working directory is: ' + gc.tempdir)
+    log.verbose('Temporary working directory is: ' + gc.tempdir)
 
     if gc.delete_tempdir:
-        log(LOGLEVEL.VERBOSE, 'Temporary working directory will be deleted at the end.')
+        log.verbose('Temporary working directory will be deleted at the end.')
     else:
-        log(LOGLEVEL.VERBOSE, 'Temporary working directory will not be deleted at the end.')
+        log.verbose('Temporary working directory will not be deleted at the end.')
 
     # env. variables
-    log(LOGLEVEL.VERBOSE, 'The Snort version number used for processing is: ' + gc.snort_version)
+    log.verbose('The Snort version number used for processing is: ' + gc.snort_version)
     if gc.distro:
-        log(LOGLEVEL.VERBOSE, 'The distro used for processing is: ' + gc.distro)
-    log(LOGLEVEL.VERBOSE, 'The ips policy used for processing is: ' + gc.ips_policy)
+        log.verbose('The distro used for processing is: ' + gc.distro)
+    log.verbose('The ips policy used for processing is: ' + gc.ips_policy)
 
     if gc.process_so_rules:
-        log(LOGLEVEL.VERBOSE, 'Pre-compiled (.so) rules will be processed.')
-        log(LOGLEVEL.VERBOSE, 'Pre-compiled (.so) files will be saved to: ' + gc.sorule_path)
+        log.verbose('Pre-compiled (.so) rules will be processed.')
+        log.verbose('Pre-compiled (.so) files will be saved to: ' + gc.sorule_path)
     else:
-        log(LOGLEVEL.VERBOSE, 'Pre-compiled (.so) rules will not be processed.')
+        log.verbose('Pre-compiled (.so) rules will not be processed.')
     # ruelset locations
     if gc.args.file:
-        log(LOGLEVEL.VERBOSE, 'Rulesets will not be downloaded, they will be loaded from a single local file: ' + "\n\t" + gc.args.file)
+        log.verbose('Rulesets will not be downloaded, they will be loaded from a single local file: ' + "\n\t" + gc.args.file)
     elif gc.args.folder:
-        log(LOGLEVEL.VERBOSE, 'Rulesets will not be downloaded, they will be loaded from all files in local folder: ' + "\n\t" + gc.args.folder)
+        log.verbose('Rulesets will not be downloaded, they will be loaded from all files in local folder: ' + "\n\t" + gc.args.folder)
     else:
-        log(LOGLEVEL.VERBOSE, 'Rulesets will be downloaded from: ')
+        log.verbose('Rulesets will be downloaded from: ')
         if gc.config['rulesets'].getboolean('registered_ruleset'):
-            log(LOGLEVEL.VERBOSE, "\tSnort Registered Ruleset")
+            log.verbose("\tSnort Registered Ruleset")
         if gc.config['rulesets'].getboolean('community_ruleset'):
-            log(LOGLEVEL.VERBOSE, "\tSnort Community Ruleset")
+            log.verbose("\tSnort Community Ruleset")
         if gc.config['rulesets'].getboolean('LightSPD_ruleset'):
-            log(LOGLEVEL.VERBOSE, "\tSnort LightSPD Ruleset")
+            log.verbose("\tSnort LightSPD Ruleset")
 
     #   Rules
     if gc.ignore_rules_files:
-        log(LOGLEVEL.VERBOSE, 'The following rules files will not be included in rulesets: ' + str(gc.ignore_rules_files))
+        log.verbose('The following rules files will not be included in rulesets: ' + str(gc.ignore_rules_files))
 
-    log(LOGLEVEL.VERBOSE, "Rule Output mode is: " + gc.rule_mode)
+    log.verbose("Rule Output mode is: " + gc.rule_mode)
     if gc.rule_mode == 'policy':
-        log(LOGLEVEL.VERBOSE, 'Policy file to write is: ' + gc.policy_path)
+        log.verbose('Policy file to write is: ' + gc.policy_path)
 
     # local rules files
     for opt in gc.config.options('configuration'):
         if opt.startswith('local_rules'):
-            log(LOGLEVEL.VERBOSE, 'Rules from Local rules file will be included: ' + gc.config['configuration'][opt])
+            log.verbose('Rules from Local rules file will be included: ' + gc.config['configuration'][opt])
 
-    log(LOGLEVEL.VERBOSE, "All Rules will be written to a single file: " + gc.config['configuration']['rule_path'])
+    log.verbose("All Rules will be written to a single file: " + gc.config['configuration']['rule_path'])
     if gc.include_disabled_rules:
-        log(LOGLEVEL.VERBOSE, "Disabled rules will be written to the rules file")
+        log.verbose("Disabled rules will be written to the rules file")
     else:
-        log(LOGLEVEL.VERBOSE, "Disabled rules will not be written to the rules file")
+        log.verbose("Disabled rules will not be written to the rules file")
 
     # policys
-    log(LOGLEVEL.VERBOSE, 'The rule_mode is: ' + gc.rule_mode)
+    log.verbose('The rule_mode is: ' + gc.rule_mode)
     if gc.rule_mode == 'policy':
-        log(LOGLEVEL.VERBOSE, 'the policy file written (to specify enabled rules) is: ' + gc.policy_path)
+        log.verbose('the policy file written (to specify enabled rules) is: ' + gc.policy_path)
 
     # blocklists
     if gc.config['blocklist'].getboolean('snort_blocklist'):
-        log(LOGLEVEL.VERBOSE, "Snort blocklist will be downloaded")
+        log.verbose("Snort blocklist will be downloaded")
     if gc.config['blocklist'].getboolean('et_blocklist'):
-        log(LOGLEVEL.VERBOSE, "ET blocklist will be downloaded")
+        log.verbose("ET blocklist will be downloaded")
     other_bl = False
     for bl in gc.config.options('blocklist'):
         if bl.startswith('blocklist_'):
-            log(LOGLEVEL.VERBOSE, "Other blocklist will be downloaded: " + gc.config['blocklist'][bl])
+            log.verbose("Other blocklist will be downloaded: " + gc.config['blocklist'][bl])
             other_bl = True
 
     if not any([gc.config['blocklist'].getboolean('snort_blocklist'),
                 gc.config['blocklist'].getboolean('et_blocklist')]) and not other_bl:
-        log(LOGLEVEL.VERBOSE, "No Blocklists will be downloaded.")
+        log.verbose("No Blocklists will be downloaded.")
     else:
-        log(LOGLEVEL.VERBOSE, 'Blocklist entries will be written to: ' + gc.config['blocklist']['block_list_path'])
+        log.verbose('Blocklist entries will be written to: ' + gc.config['blocklist']['block_list_path'])
 
-    log(LOGLEVEL.VERBOSE, '------------------------------------------------------------')
+    log.verbose('------------------------------------------------------------')
 
 
 def determine_ruleset_urls():
@@ -935,9 +864,9 @@ def determine_ruleset_urls():
 
     # todo: ET rulesets
 
-    log(LOGLEVEL.VERBOSE, 'Returning ' + str(len(urls)) + ' ruleset URLs:')
+    log.verbose('Returning ' + str(len(urls)) + ' ruleset URLs:')
     for url in urls:
-        log(LOGLEVEL.VERBOSE, "\t" + url[0] + " - " + url[1])
+        log.verbose("\t" + url[0] + " - " + url[1])
     return urls
 
 
@@ -951,9 +880,9 @@ def download_rulesets(urls):
     downloaded_rulesets_dir = gc.tempdir + sep + 'downloaded_rulesets' + sep
     # extracted_rulesets_dir = gc.tempdir + sep + 'extracted_rulesets' +sep
 
-    log(LOGLEVEL.VERBOSE, 'Preparing to download the following rulesets to temp directory: ' + downloaded_rulesets_dir)
+    log.verbose('Preparing to download the following rulesets to temp directory: ' + downloaded_rulesets_dir)
     for u in urls:
-        log(LOGLEVEL.VERBOSE, "\t" + u[0] + " - " + u[1])
+        log.verbose("\t" + u[0] + " - " + u[1])
 
     ruleset_archive_files = []   # array of tuples of ID and full path of downloaded tgz archive rulesets
 
@@ -962,19 +891,19 @@ def download_rulesets(urls):
     # todo: if url doesn't contain filename, dtermine from server
     # https://stackoverflow.com/questions/2795331/python-download-without-supplying-a-filename
     for url in urls:
-        log(LOGLEVEL.DEBUG, "-----------------------------------------")
+        log.debug("-----------------------------------------")
         filename = urlsplit(url[1]).path.split("/")[-1]
 
-        log(LOGLEVEL.INFO, 'Downloading ruleset file: ' + filename + ' from: ' + url[1])
+        log.info('Downloading ruleset file: ' + filename + ' from: ' + url[1])
 
-        r = get(url[1])
+        r = requests.get(url[1])
 
         # Retrieve HTTP meta-data
         # print("\t" + r.status_code)
         # print("\t" + r.headers['content-type'])
         # print("\t" + r.encoding)
 
-        log(LOGLEVEL.INFO, 'Writing ruleset file to disk: ' + downloaded_rulesets_dir + filename)
+        log.info('Writing ruleset file to disk: ' + downloaded_rulesets_dir + filename)
 
         with open(downloaded_rulesets_dir + filename, 'wb') as f:
             f.write(r.content)
@@ -997,16 +926,16 @@ def untar_rulesets(files):
 
     folder_names = []   # the list of folder names of extracted tgz files (full path)
 
-    log(LOGLEVEL.VERBOSE, "Preparing to extract the following ruleset tarball files to temp directory: \n\t(tempdir) " + extracted_rulesets_dir)
+    log.verbose("Preparing to extract the following ruleset tarball files to temp directory: \n\t(tempdir) " + extracted_rulesets_dir)
 
     for f in files:
-        log(LOGLEVEL.VERBOSE, "\t(ruleset tarball) " + str(f))
-        # log(LOGLEVEL.VERBOSE, "\t(ruleset tarball) " + f[1])
+        log.verbose("\t(ruleset tarball) " + str(f))
+        # log.verbose("\t(ruleset tarball) " + f[1])
 
     for file in files:
 
         # extract TGZ files
-        log(LOGLEVEL.DEBUG, 'Working on file: ' + file[1])
+        log.debug('Working on file: ' + file[1])
 
         filename = basename(file[1])
         # get the filename
@@ -1017,9 +946,9 @@ def untar_rulesets(files):
         else:
             out_foldername = extracted_rulesets_dir + filename + sep
 
-        log(LOGLEVEL.DEBUG, "Out_foldername is: " + out_foldername)
+        log.debug("Out_foldername is: " + out_foldername)
 
-        log(LOGLEVEL.VERBOSE, 'Extracting tgz file: ' + file[1] + " to " + out_foldername)
+        log.verbose('Extracting tgz file: ' + file[1] + " to " + out_foldername)
         # todo: error check: https://docs.python.org/3/library/tarfile.html#tarfile.open
         tgz = open_tar(file[1])
         tgz.extractall(out_foldername)  # specify which folder to extract to
@@ -1042,7 +971,7 @@ def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
                  source_type      =  the source of the rule, must be: (text, builtin, so, local)
              }
     '''
-    log(LOGLEVEL.DEBUG, 'In function get_text_rules_from_folder. rulefolder_path is: ' + rulefolder_path)
+    log.debug('In function get_text_rules_from_folder. rulefolder_path is: ' + rulefolder_path)
 
     # TODO: remove snort3-deleted.rules (deleted.rules,experimental.rules,local.rules)
 
@@ -1050,13 +979,13 @@ def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
     try:
         f = listdir(rulefolder_path)
     except Exception:
-        log(LOGLEVEL.INFO, 'Directory does not exist, returning nothing: ' + rulefolder_path)
+        log.info('Directory does not exist, returning nothing: ' + rulefolder_path)
         return []
     if len(f) == 1:
-        log(LOGLEVEL.DEBUG, 'rulefolder_path contains only one object: ' + str(f))
+        log.debug('rulefolder_path contains only one object: ' + str(f))
         if isdir(rulefolder_path + sep + f[0]):
             rulefolder_path += f[0] + sep
-            log(LOGLEVEL.DEBUG, 'Updated rulefolder_path is: ' + rulefolder_path)
+            log.debug('Updated rulefolder_path is: ' + rulefolder_path)
 
     all_rules = []
 
@@ -1065,16 +994,16 @@ def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
         f.name != 'includes.rules' and
         f.name not in gc.ignore_rules_files]
 
-    log(LOGLEVEL.DEBUG, 'Rules_files to process are: ')
+    log.debug('Rules_files to process are: ')
     for r in rules_files:
-        log(LOGLEVEL.DEBUG, "\t" + r.path)
+        log.debug("\t" + r.path)
 
     for rule_file in rules_files:
-        log(LOGLEVEL.DEBUG, "Processing rules file: " + rule_file.name)
+        log.debug("Processing rules file: " + rule_file.name)
         # todo error handling on fopen
         with open(rule_file.path, 'r') as f:
             rules = f.readlines()
-        log(LOGLEVEL.DEBUG, "\t" + str(len(rules)) + " lines loaded.")
+        log.debug("\t" + str(len(rules)) + " lines loaded.")
 
         for rule in rules:
             # remove all non-rule lines (leave commented out rules)
@@ -1089,7 +1018,7 @@ def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
                     'fingerprint':  fingerprint_rule(rule.strip())  # noqa
                 })
 
-    log(LOGLEVEL.DEBUG, 'Exiting function get_text_rules_from_folder. Returning ' + str(len(all_rules)) + ' actual rules (no comments).')
+    log.debug('Exiting function get_text_rules_from_folder. Returning ' + str(len(all_rules)) + ' actual rules (no comments).')
 
     return all_rules
 
@@ -1099,7 +1028,7 @@ def get_policy_from_file(path):
     Get the contents of a ips_policy file
     '''
 
-    log(LOGLEVEL.DEBUG, 'Entering function get_policy_from_file. Path is: ' + path)
+    log.debug('Entering function get_policy_from_file. Path is: ' + path)
 
     enabled_rules = []
 
@@ -1107,7 +1036,7 @@ def get_policy_from_file(path):
         with open(path, 'r') as f:
             enabled_rules = f.readlines()
     except Exception:
-        log(LOGLEVEL.WARNING, "Error getting policy information from " + path)
+        log.warning("Error getting policy information from " + path)
 
     # make sure each element ends in a newline (for output reasons)
     for i, r in enumerate(enabled_rules):
@@ -1115,7 +1044,7 @@ def get_policy_from_file(path):
             enabled_rules[i] = r + "\n"
 
     # TODO: remove any entries that aren't actual policy entries (comments and whitespace)
-    log(LOGLEVEL.DEBUG, 'Exiting function get_policy_from_file. Returning ' + str(len(enabled_rules)) + ' entries.')
+    log.debug('Exiting function get_policy_from_file. Returning ' + str(len(enabled_rules)) + ' entries.')
 
     return enabled_rules
 
@@ -1152,7 +1081,7 @@ def load_local_rules():
     Process local rules files
     '''
 
-    log(LOGLEVEL.VERBOSE, "Loading local rules files.")
+    log.verbose("Loading local rules files.")
 
     # we can have many local rules files, in the 'config' section named local_rules*
     opts = gc.config.options('configuration')
@@ -1162,14 +1091,14 @@ def load_local_rules():
     for opt in opts:
         if opt.startswith('local_rules'):
             path = gc.config['configuration'][opt]
-            log(LOGLEVEL.VERBOSE, 'Processing local rules file: ' + path)
+            log.verbose('Processing local rules file: ' + path)
 
             if isfile(path):
                 # todo error handling on fopen
                 with open(path, 'r') as f:
                     rules = f.readlines()
             else:
-                log(LOGLEVEL.WARNING, 'Error, could not find local rulefile located at: ' + path)
+                log.warning('Error, could not find local rulefile located at: ' + path)
 
             for rule in rules:
                 s = is_rule(rule)
@@ -1184,7 +1113,7 @@ def load_local_rules():
                         'enabled':      s['enabled']  # noqa
                     })
 
-    log(LOGLEVEL.VERBOSE, 'Returning ' + str(len(rules_to_return)) + ' rules from all local rules files.')
+    log.verbose('Returning ' + str(len(rules_to_return)) + ' rules from all local rules files.')
 
     return rules_to_return
 
@@ -1194,22 +1123,22 @@ def get_blocklist_urls():
     Identify all blocklist URLs to download
     '''
 
-    log(LOGLEVEL.VERBOSE, "Identifying all blocklist URLs to download from.")
+    log.verbose("Identifying all blocklist URLs to download from.")
     urls = []   # array of strings
 
     if gc.config['blocklist'].getboolean('snort_blocklist'):
-        log(LOGLEVEL.VERBOSE, "- Will download Snort blocklist")
+        log.verbose("- Will download Snort blocklist")
         urls.append(SNORT_BLOCKLIST_URL)
     if gc.config['blocklist'].getboolean('et_blocklist'):
         urls.append(ET_BLOCKLIST_URL)
-        log(LOGLEVEL.VERBOSE, "- Will download ET blocklist")
+        log.verbose("- Will download ET blocklist")
 
     for bl in gc.config.options('blocklist'):
         if bl.startswith('blocklist_'):
-            log(LOGLEVEL.VERBOSE, "- Will download Other blocklist: " + bl + ": " + str(gc.config['blocklist'][bl]))
+            log.verbose("- Will download Other blocklist: " + bl + ": " + str(gc.config['blocklist'][bl]))
             urls.append(gc.config['blocklist'][bl])
 
-    log(LOGLEVEL.VERBOSE, "Identified " + str(len(urls)) + " blocklist URLs to download.")
+    log.verbose("Identified " + str(len(urls)) + " blocklist URLs to download.")
     return urls
 
 
@@ -1218,19 +1147,19 @@ def get_blocklists(start_time, urls):
     Get blocklist entries from URLs
     '''
 
-    log(LOGLEVEL.VERBOSE, "Downloading " + str(len(urls)) + " blocklists.")
+    log.verbose("Downloading " + str(len(urls)) + " blocklists.")
     if not urls:
         return ''
 
     blocklist = "# BLOCKLIST CREATED BY " + SCRIPT_NAME.upper() + " ON " + start_time + "\n\n"  # array of strings, content of blocklists
 
     for url in urls:
-        log(LOGLEVEL.VERBOSE, "- Downloading " + url)
+        log.verbose("- Downloading " + url)
         # todo: error check
         try:
-            r = get(url)
+            r = requests.get(url)
         except Exception as e:
-            log(LOGLEVEL.WARNING, '* Error downloading URL: ' + str(e))
+            log.warning('* Error downloading URL: ' + str(e))
 
         blocklist += "# " + SCRIPT_NAME + " - The follwing entries downloaded from: " + url + "\n\n" + r.text + "\n\n\n"
 
@@ -1243,7 +1172,7 @@ def write_blocklists_to_file(bl):
     '''
 
     if not bl:
-        log(LOGLEVEL.VERBOSE, "No Blocklist entries to write to disk.")
+        log.verbose("No Blocklist entries to write to disk.")
         return
 
     # todo: try/catch error
@@ -1256,8 +1185,8 @@ def write_rulesets_to_disk(rules, path):
     write the rulesets to a file (array of strings)
     '''
 
-    log(LOGLEVEL.DEBUG, 'Entering Function write_rulesets_to_disk.')
-    log(LOGLEVEL.VERBOSE, 'Preparing to write ' + str(len(rules)) + ' rules to ' + path)
+    log.debug('Entering Function write_rulesets_to_disk.')
+    log.verbose('Preparing to write ' + str(len(rules)) + ' rules to ' + path)
 
     # if mode == simple, modify rule to comment-out disabled rules
     if gc.rule_mode == 'simple':
@@ -1289,7 +1218,7 @@ def write_rulesets_to_disk(rules, path):
                 header = (r['uid'], r['source_type'], r['filename'])
                 f.write("\n##### The following rules come from: " + r['uid'] + ' with sourcetype "' + r['source_type'] + '" from ' + r['filename'] + " #####\n\n")
             f.write(r['rule'] + "\n")
-    log(LOGLEVEL.DEBUG, 'Exiting Function write_rulesets_to_disk.')
+    log.debug('Exiting Function write_rulesets_to_disk.')
 
 
 def write_state_to_disk(state, path):
@@ -1297,7 +1226,7 @@ def write_state_to_disk(state, path):
     write the rulesets to a file (array of strings)
     '''
 
-    log(LOGLEVEL.DEBUG, 'Entering Function write_policy_to_disk. ' + str(len(state)) + ' lines to write to: ' + path)
+    log.debug('Entering Function write_policy_to_disk. ' + str(len(state)) + ' lines to write to: ' + path)
 
     # todo: try/catch error
     with open(path, 'w') as f:
@@ -1314,7 +1243,7 @@ def write_state_to_disk(state, path):
         f.writelines(state)
         f.write("\n")
 
-    log(LOGLEVEL.DEBUG, 'Exiting Function write_policy_to_disk.')
+    log.debug('Exiting Function write_policy_to_disk.')
 
 
 def is_rule(rule):
@@ -1345,49 +1274,49 @@ def is_rule(rule):
         return {'enabled': enabled, 'rule': rule}
 
 
-def printEnviornment(gc):
+def print_environment(gc):
     '''
     Print environment Information
     '''
 
     # todo: get distro
     # todo: convert print to 'log'
-    log(LOGLEVEL.VERBOSE, 'Running {} v{}'.format(SCRIPT_NAME, VERSION_NUMBER))
-    log(LOGLEVEL.VERBOSE, "Verbosity (-v or -vv) flag enabled. Verbosity level is: " + LOGLEVEL(gc.verbose).name)
-    log(LOGLEVEL.DEBUG, 'Start time is: ' + gc.start_time)
-    log(LOGLEVEL.DEBUG, 'Command-line arguments (argv) are:' + str(argv))
-    log(LOGLEVEL.DEBUG, "Parsed command-line arguments are (including defaults):")
+    log.verbose(f'Running {VERSION_STR}')
+    log.verbose("Verbosity (-v or -vv) flag enabled. Verbosity level is: " + log.level.name)
+    log.debug('Start time is: ' + gc.start_time)
+    log.debug('Command-line arguments (argv) are:' + str(argv))
+    log.debug("Parsed command-line arguments are (including defaults):")
     for k, v in sorted(vars(gc.args).items()):
-        log(LOGLEVEL.DEBUG, "\t" + str(k) + ' = ' + str(v))
-    log(LOGLEVEL.DEBUG, 'Platform is:' + platform() + '; ' + version())
-    log(LOGLEVEL.DEBUG, 'uname is: ' + str(uname()))
-    log(LOGLEVEL.DEBUG, 'System is: ' + str(system()))
-    log(LOGLEVEL.DEBUG, 'Python: ' + str(python_version()))
-    log(LOGLEVEL.DEBUG, "architecture is: " + str(architecture()[0]))
-    log(LOGLEVEL.DEBUG, "PWD is: " + str(environ.get('PWD')))
-    log(LOGLEVEL.DEBUG, "SHELL is: " + str(environ.get('SHELL')))
-    log(LOGLEVEL.DEBUG, 'OS Path Separator is: ' + sep)
+        log.debug("\t" + str(k) + ' = ' + str(v))
+    log.debug('Platform is:' + platform() + '; ' + version())
+    log.debug('uname is: ' + str(uname()))
+    log.debug('System is: ' + str(system()))
+    log.debug('Python: ' + str(python_version()))
+    log.debug("architecture is: " + str(architecture()[0]))
+    log.debug("PWD is: " + str(environ.get('PWD')))
+    log.debug("SHELL is: " + str(environ.get('SHELL')))
+    log.debug('OS Path Separator is: ' + sep)
 
 
-def getTempDirectory(start_time):
+def get_temp_directory(start_time):
     '''
     Create a temp directory
     '''
 
     #   First check if temp dir is specified in configuration, otherwise
     #   use system temp dir
-    log(LOGLEVEL.DEBUG, 'Determining what temporary directory path to use.')
+    log.debug('Determining what temporary directory path to use.')
 
-    log(LOGLEVEL.DEBUG, "\tChecking if temp_path is specified in config file.")
+    log.debug("\tChecking if temp_path is specified in config file.")
 
     if gc.config.has_option('configuration', 'temp_path'):
         tmp = gc.config['configuration']['temp_path'] + sep + SCRIPT_NAME + '-' + start_time
-        log(LOGLEVEL.DEBUG, "\ttemp_path is specified in config file. Will try using: " + tmp)
+        log.debug("\ttemp_path is specified in config file. Will try using: " + tmp)
     else:
         tmp = gettempdir() + sep + SCRIPT_NAME + '-' + start_time
-        log(LOGLEVEL.DEBUG, "\ttemp_path is not specified in config file. Will try using: " + tmp)
+        log.debug("\ttemp_path is not specified in config file. Will try using: " + tmp)
 
-    log(LOGLEVEL.DEBUG, "\tTrying to create new Temp working file: " + tmp)
+    log.debug("\tTrying to create new Temp working file: " + tmp)
     try:
         mkdir(tmp)
         mkdir(tmp + sep + 'downloaded_rulesets')
@@ -1395,49 +1324,49 @@ def getTempDirectory(start_time):
         if(gc.process_so_rules):
             mkdir(tmp + sep + 'so_rules')
     except OSError:
-        log(LOGLEVEL.ERROR, "Fatal Error: Creation of the temporary working directory %s failed" % tmp)
+        log.error("Fatal Error: Creation of the temporary working directory %s failed" % tmp)
     else:
-        log(LOGLEVEL.DEBUG, "\tSuccessfully created the temp directory %s " % tmp)
+        log.debug("\tSuccessfully created the temp directory %s " % tmp)
 
     return tmp
 
 
-def getSnortVersion():
+def get_snort_version():
     '''
     Determine the Version of Snort
     '''
 
-    log(LOGLEVEL.DEBUG, "Determining Snort version from config file or from Snort binary.")
+    log.debug("Determining Snort version from config file or from Snort binary.")
     # first check the config file
     if gc.config.has_option('snort', 'snort_version'):
-        log(LOGLEVEL.DEBUG, "\tDetermining snort version from config file.")
+        log.debug("\tDetermining snort version from config file.")
         v = gc.config['snort']['snort_version']
-        log(LOGLEVEL.DEBUG, "\tsnort version number from config file is: " + v)
+        log.debug("\tsnort version number from config file is: " + v)
         return v
 
     # otherwise check the binary. First determine where the binary resides
     if gc.config.has_option('snort', 'snort_path'):
         command = gc.config['snort']['snort_path'] + ' -V'
-        log(LOGLEVEL.DEBUG, "\tTrying to determine snort version from binary specified in configuration at snort_path: " + command)
+        log.debug("\tTrying to determine snort version from binary specified in configuration at snort_path: " + command)
     else:
         command = "snort -V"  # the shell command
-        log(LOGLEVEL.DEBUG, "\tTrying to determine snort version from binary on system path: " + command)
+        log.debug("\tTrying to determine snort version from binary on system path: " + command)
 
     # call the snort binary with -V flag
     try:
         process = Popen(command, stdout=PIPE, stderr=PIPE, shell=True)
         output, error = process.communicate()
     except Exception as e:
-        log(LOGLEVEL.ERROR, 'Fatal error determining snort version from binary:' + str(e))
+        log.error('Fatal error determining snort version from binary:' + str(e))
 
     # check return call for error
     if error:
-        log(LOGLEVEL.ERROR, 'Fatal error determining snort version from binary:' + process.returncode + ' ' + error.strip())
+        log.error('Fatal error determining snort version from binary:' + process.returncode + ' ' + error.strip())
 
     # parse stdout from snort binary to determine version number
-    log(LOGLEVEL.DEBUG, "\tOutput from Snort binary with -V flag is: \n" + str(output) + "\n")
+    log.debug("\tOutput from Snort binary with -V flag is: \n" + str(output) + "\n")
     x = search(r"Version [-\.\d\w]*", str(output))
-    log(LOGLEVEL.VERBOSE, "\tsnort version number from executable is: " + x.group()[8:])
+    log.verbose("\tsnort version number from executable is: " + x.group()[8:])
     return x.group()[8:]
 
 
@@ -1446,13 +1375,13 @@ def get_distro():
     Determine the current distro
     '''
 
-    log(LOGLEVEL.DEBUG, "Determining distro from config file or from OS.")
+    log.debug("Determining distro from config file or from OS.")
 
     # first check the config file
     if gc.config.has_option('configuration', 'distro'):
-        log(LOGLEVEL.DEBUG, "\tDetermining distro from config file.")
+        log.debug("\tDetermining distro from config file.")
         v = gc.config['configuration']['distro']
-        log(LOGLEVEL.DEBUG, "\tdistro from config is " + v)
+        log.debug("\tdistro from config is " + v)
         return v
     # if not config file, try to determine from OS
     # todo:
@@ -1465,22 +1394,22 @@ def get_policy():
     See: https://www.snort.org/faq/why-are-rules-commented-out-by-default
     '''
 
-    log(LOGLEVEL.DEBUG, "Determining policy from config file.")
+    log.debug("Determining policy from config file.")
 
     valid_policies = ['none', 'connectivity', 'balanced', 'security', 'max-detect']
 
     # check the config file
     if gc.config.has_option('configuration', 'ips_policy'):
-        log(LOGLEVEL.DEBUG, "\tDetermining policy from config file.")
+        log.debug("\tDetermining policy from config file.")
         policy = gc.config['configuration']['ips_policy'].lower()
     else:
-        log(LOGLEVEL.DEBUG, 'No ips_policy found, defaulting to "connectivity"')
+        log.debug('No ips_policy found, defaulting to "connectivity"')
         policy = 'connectivity'
 
     if policy not in valid_policies:
-        log(LOGLEVEL.ERROR, 'Invalid ips_policy found: ' + policy)
+        log.error('Invalid ips_policy found: ' + policy)
 
-    log(LOGLEVEL.DEBUG, 'ips_policy is: ' + policy)
+    log.debug('ips_policy is: ' + policy)
 
     # convert policy to actual filename
     if policy == 'connectivity':
@@ -1512,7 +1441,7 @@ def stringify_rules(rules):
     if isinstance(rules, dict):
         rules = [rules]
 
-    log(LOGLEVEL.DEBUG, "We have received " + str(len(rules)) + ' rule objects in stringify_rules.')
+    log.debug("We have received " + str(len(rules)) + ' rule objects in stringify_rules.')
 
     all_rules = []
     c = 0
@@ -1564,7 +1493,7 @@ def stringify_rules(rules):
         all_rules.append(rule_str)
         # print(str(c) + "\t" + str(len(all_rules)))
 
-    log(LOGLEVEL.DEBUG, "We are returning " + str(len(all_rules)) + ' rule objects from stringify_rules.')
+    log.debug("We are returning " + str(len(all_rules)) + ' rule objects from stringify_rules.')
     return all_rules
 
 

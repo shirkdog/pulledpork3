@@ -15,7 +15,7 @@ Include as much information as possible with bug and feature reports, including 
 
 ## Installation and Requirements
 
-PulledPork requires Python 3 with the standard libraries.
+PulledPork requires Python 3 with the (mostly) standard libraries.
 extract the pulledpork.conf and pulledpork.py file to a suitable location (/usr/local/bin/pulledpork/ or c:\program files\PulledPork).
 
 PulledPork3 has been tested on Windows, Linux and other Unix-LIKE/BSD systems.
