@@ -155,6 +155,7 @@ def main():
         log.level = logger.Levels.VERBOSE
     if gc.args.debug:
         log.level = logger.Levels.DEBUG
+        print_environment(gc)
 
     # Also setup halt on warn as requested
     log.halt_on_warn = not gc.args.ignore_warn
