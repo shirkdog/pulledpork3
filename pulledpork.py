@@ -34,9 +34,11 @@ from tempfile import gettempdir             # temp directory mgmt
 from time import strftime, localtime
 from urllib.parse import urlsplit           # get filename from url
 
+# Third-party libraries
 import requests
 
-from ppork3 import logger                   # Our logging helper (for now)
+# Our PulledPork3 internal libraries
+from lib import logger                      # logging helper (for now)
 
 
 # -----------------------------------------------------------------------------
