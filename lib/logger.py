@@ -37,6 +37,7 @@ class Logger(object):
     # Set global defaults
     _level = DEFAULT_LEVEL
     _halt_on_warn = DEFAULT_HALT_ON_WARN
+    _hidden_strings = []
 
     def __init__(self, level=None, halt_on_warn=None):
 
@@ -74,27 +75,50 @@ class Logger(object):
     def halt_on_warn(self, halt_on_warn):
         self._set_halt_on_warn(halt_on_warn)
 
+    # This one is a little special... RO property, and must use
+    #    .add_hidden_string() to add to global list
+
+    @property
+    def hidden_strings(self):
+        return self._hidden_strings
+
+    @classmethod
+    def add_hidden_string(cls, some_str):
+        cls._hidden_strings.append(some_str)
+
+    def _sanitize(self, msg):
+        '''
+        Hide the strings present in the hidden_strings list
+        '''
+
+        # Work through the list, replacing each
+        for some_str in self.hidden_strings:
+            msg = msg.replace(some_str, '<hidden>')
+
+        # Return final result
+        return msg
+
     # Logging methods
 
     def error(self, msg):
-
-        # Not currently logging this level? Move on, otherwise print msg
+        '''
+        Print the message as long we have a logging level at, or below, ERROR
+        '''
         if self.level < Levels.ERROR:
             return
-
-        # Using colors!
+        msg = self._sanitize(msg)
         print(f'{Colors.FAIL}ERROR: {msg}{Colors.ENDC}')
 
         # This was critical
         sys.exit(-2)
 
     def warning(self, msg):
-
-        # Not currently logging this level? Move on, otherwise print msg
+        '''
+        Print the message as long we have a logging level at, or below, WARNING
+        '''
         if self.level < Levels.WARNING:
             return
-
-        # Using colors!
+        msg = self._sanitize(msg)
         print(f'{Colors.WARNING}WARNING: {msg}{Colors.ENDC}')
 
         # Halt if requested
@@ -102,22 +126,27 @@ class Logger(object):
             sys.exit(-1)
 
     def info(self, msg):
-
-        # Not currently logging this level? Move on, otherwise print msg
+        '''
+        Print the message as long we have a logging level at, or below, INFO
+        '''
         if self.level < Levels.INFO:
             return
+        msg = self._sanitize(msg)
         print(msg)
 
     def verbose(self, msg):
-
-        # Not currently logging this level? Move on, otherwise print msg
+        '''
+        Print the message as long we have a logging level at, or below, VERBOSE
+        '''
         if self.level < Levels.VERBOSE:
             return
+        msg = self._sanitize(msg)
         print(msg)
 
     def debug(self, msg):
-
-        # Not currently logging this level? Move on, otherwise print msg
+        '''
+        Print the message as long we have a logging level at, or below, DEBUG
+        '''
         if self.level < Levels.DEBUG:
             return
         print(msg)

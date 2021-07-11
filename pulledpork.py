@@ -131,19 +131,20 @@ def main():
         for k, v in gc.config.items(sect):
             log.debug("\t\tKey: " + k + "\tValue: " + v)
 
-    # -----------------------------------------------------------------------------
     # Validate configuration file (logical validation of settings; error out if issue)
     #   determine fields for GC from command line and config file, save in global gc
     # todo: join these two functions into single function
     validate_configuration()
     determine_configuration_options()
 
-    # -----------------------------------------------------------------------------
+    # Update logging if we're not printing the oinkcode
+    if not gc.print_oinkcode:
+        log.add_hidden_string(gc.oinkcode)
+
     # Create a temp working directory (path stored as a string)
     gc.tempdir = get_temp_directory(gc.start_time)
     log.verbose("Temporary working directory is: " + gc.tempdir)
 
-    # -----------------------------------------------------------------------------
     # Determine a set of required info, from config file or from the computer itself
     gc.snort_version = get_snort_version()
     gc.distro = get_distro()
@@ -152,7 +153,6 @@ def main():
     # we now have all required info to run, print the configuration to screen
     print_operational_settings()
 
-    # -----------------------------------------------------------------------------
     # Obtain the archived ruleset (tgz) files
     # either from online sources or from a local folder
     local_rulesets = []  # list of full file paths to tgz files (local filenames or the path to the tgz files after download)
