@@ -31,14 +31,13 @@ from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
 from tarfile import open as open_tar        # to extract tgz ruleset file
 from tempfile import gettempdir             # temp directory mgmt
-from time import strftime, localtime
 from urllib.parse import urlsplit           # get filename from url
 
 # Third-party libraries
 import requests
 
 # Our PulledPork3 internal libraries
-from lib import logger                      # logging helper (for now)
+from lib import config, logger
 
 
 # -----------------------------------------------------------------------------
@@ -66,67 +65,11 @@ ET_BLOCKLIST_URL = 'http://rules.emergingthreatspro.com/fwrules/emerging-Block-I
 
 
 # -----------------------------------------------------------------------------
-#   Prepare logging
+#   Prepare the logging and config
 # -----------------------------------------------------------------------------
 
 log = logger.Logger()
-
-
-# -----------------------------------------------------------------------------
-#   Class for GlobalConfiguration
-# -----------------------------------------------------------------------------
-
-gc = ''  # global variable so we can reach this anywhere
-
-
-class GlobalConfiguration:
-    def __init__(self):
-        self.start_time     = strftime('%Y.%m.%d-%H.%M.%S' , localtime())  # noqa
-
-        self.tempdir        = ''        # path to our temp working directory  # noqa
-        self.delete_tempdir = True      # should the tempdir be deleted on exit
-
-        self.args           = ''        # command-line arguments from argparse  # noqa
-        self.config         = ''        # config file values, parsed by ConfigParser  # noqa
-
-        self.halt_on_warn   = True      # terminate on warning  # noqa
-
-        self.snort_version  = ''                # snort version (from config or determined programmatically)  # noqa
-        self.ips_policy     = 'connectivity'    # what rules should be enabled/disabled by policy  # noqa
-        self.distro         = None              # distro needed for precompiled so rules  # noqa
-        self.rules_outfile  = ''                # where to write combined rules file  # noqa
-        self.include_disabled_rules = False     # should disabled rules be included in output
-        self.process_so_rules = False           # are we processing so rules
-        self.sorule_path    = ''                # where to copy so rules  # noqa
-        self.ignore_rules_files = []            # what filenames to ignore in the rulesets
-
-        self.bocklist_outfile = ''          # where to output our combined blocklist file  # noqa
-
-        self.oinkcode       = None          # snort oninkcode for downloading rulesets and filtering out of output  # noqa
-        self.print_oinkcode = False         # should the Oinkcode be included in the output (usually no)
-
-        self.rule_mode      = 'simple'      # 'simple' or 'policy': how should rules be enabled in the output  # noqa
-        self.policy_path    = None          # where to write the policy file if rule_mode is 'policy'  # noqa
-
-
-def flying_pig_banner():
-    '''
-    OMG We MUST HAVE FLYING PIGS! The community demands it.
-    '''
-
-    # For now simple printing, will need to clean this up
-    print(f"""
-    https://github.com/shirkdog/pulledpork3
-      _____ ____
-     `----,\\    )
-      `--==\\\\  /    {VERSION_STR} - {TAGLINE}
-       `--==\\\\/
-     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk
-  @_/        /  66\\_  and the PulledPork Team!
-    |    \\   \\   _(\")
-     \\   /-| ||'--'  Rules give me wings!
-      \\_\\  \\_\\\\
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~""")
+gc = config.Config()
 
 
 # -----------------------------------------------------------------------------
@@ -134,10 +77,6 @@ def flying_pig_banner():
 # -----------------------------------------------------------------------------
 
 def main():
-
-    # Create a place for all global config items
-    global gc
-    gc = GlobalConfiguration()
 
     # parse our command-line args with ArgParse
     gc.args = parse_argv()
@@ -606,6 +545,26 @@ def main():
 #
 # *****************************************************************************
 # *****************************************************************************
+
+
+def flying_pig_banner():
+    '''
+    OMG We MUST HAVE FLYING PIGS! The community demands it.
+    '''
+
+    # For now simple printing, will need to clean this up
+    print(f"""
+    https://github.com/shirkdog/pulledpork3
+      _____ ____
+     `----,\\    )
+      `--==\\\\  /    {VERSION_STR} - {TAGLINE}
+       `--==\\\\/
+     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk
+  @_/        /  66\\_  and the PulledPork Team!
+    |    \\   \\   _(\")
+     \\   /-| ||'--'  Rules give me wings!
+      \\_\\  \\_\\\\
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~""")
 
 
 def parse_argv():

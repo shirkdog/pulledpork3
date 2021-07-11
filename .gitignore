@@ -134,3 +134,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+
+# Config for testing/validation
+test.conf
