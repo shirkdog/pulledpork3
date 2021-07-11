@@ -145,6 +145,9 @@ def main():
         print(VERSION_STR)
         exit(0)
 
+    # Always show pigs flying as the preamble, regardless of verbosity
+    flying_pig_banner()
+
     # Setup logging as requested
     #   NOTE: For now all the args are permitted, but specifying more than one
     #         will override less verbose ones. Priority order:
@@ -159,9 +162,6 @@ def main():
 
     # Also setup halt on warn as requested
     log.halt_on_warn = not gc.args.ignore_warn
-
-    # Always show pigs flying as the preamble, regardless of verbosity
-    flying_pig_banner()
 
     # Load the configuration File from command line (-c FILENAME). Verify exists, and only 1 entry.
     if not gc.args.configuration:
