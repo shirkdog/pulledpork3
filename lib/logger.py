@@ -100,14 +100,28 @@ class Logger(object):
 
     # Logging methods
 
+    def _log(self, level, msg):
+        '''
+        Print the message as long we have a sufficient log level, and sanitize
+        if required
+        '''
+
+        # Check the level
+        if self.level < level:
+            return
+
+        # Sanitize the output unless we're at DEBUG
+        if level < Levels.DEBUG:
+            msg = self._sanitize(msg)
+
+        # Print the message
+        print(msg)
+
     def error(self, msg):
         '''
         Print the message as long we have a logging level at, or below, ERROR
         '''
-        if self.level < Levels.ERROR:
-            return
-        msg = self._sanitize(msg)
-        print(f'{Colors.FAIL}ERROR: {msg}{Colors.ENDC}')
+        self._log(Levels.ERROR, f'{Colors.FAIL}ERROR: {msg}{Colors.ENDC}')
 
         # This was critical
         sys.exit(-2)
@@ -116,10 +130,7 @@ class Logger(object):
         '''
         Print the message as long we have a logging level at, or below, WARNING
         '''
-        if self.level < Levels.WARNING:
-            return
-        msg = self._sanitize(msg)
-        print(f'{Colors.WARNING}WARNING: {msg}{Colors.ENDC}')
+        self._log(Levels.WARNING, f'{Colors.WARNING}WARNING: {msg}{Colors.ENDC}')
 
         # Halt if requested
         if self.halt_on_warn:
@@ -129,24 +140,16 @@ class Logger(object):
         '''
         Print the message as long we have a logging level at, or below, INFO
         '''
-        if self.level < Levels.INFO:
-            return
-        msg = self._sanitize(msg)
-        print(msg)
+        self._log(Levels.INFO, msg)
 
     def verbose(self, msg):
         '''
         Print the message as long we have a logging level at, or below, VERBOSE
         '''
-        if self.level < Levels.VERBOSE:
-            return
-        msg = self._sanitize(msg)
-        print(msg)
+        self._log(Levels.VERBOSE, msg)
 
     def debug(self, msg):
         '''
         Print the message as long we have a logging level at, or below, DEBUG
         '''
-        if self.level < Levels.DEBUG:
-            return
-        print(msg)
+        self._log(Levels.DEBUG, msg)
