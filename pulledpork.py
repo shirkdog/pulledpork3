@@ -22,11 +22,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 from argparse import ArgumentParser         # command line parameters parser
 from configparser import ConfigParser       # to parse the conf file
 from json import load                       # to load json manifest file in lightSPD
-from os import environ, listdir, scandir, mkdir
+from os import environ, listdir, scandir, mkdir, kill
 from os.path import isfile, join, sep, abspath, basename, isdir
 from platform import platform, version, uname, system, python_version, architecture
 from re import search, sub, match
 from shutil import rmtree, copy             # remove directory tree, python 3.4+
+from signal import SIGHUP
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
 from tarfile import open as open_tar        # to extract tgz ruleset file
@@ -509,17 +510,21 @@ def main():
 
     write_blocklists_to_file(blocklist_entries)
 
-    # todo:  Reload snort (sighup)
+    # -----------------------------------------------------------------------------
+    # Relad Snort
 
-    # unix/linux SIGHUP
-    # import os, signal
-    # os.kill(pid, signal.SIGHUP)
+    if gc.pid_path:
+        with open(gc.pid_path, 'r') as f:
+            pid = f.readline().strip()
+            pid = int(pid)
 
-    # windows SIGHUP
-    # import ctypes
-    # ucrtbase = ctypes.CDLL('ucrtbase')
-    # c_raise = ucrtbase['raise']
-    # c_raise(some_signal)
+        kill(pid, SIGHUP)   # does not work on windows, see below
+
+        # windows SIGHUP
+        # import ctypes
+        # ucrtbase = ctypes.CDLL('ucrtbase')
+        # c_raise = ucrtbase['raise']
+        # c_raise(some_signal)
 
     # -----------------------------------------------------------------------------
     # Delete temp dir
@@ -734,6 +739,10 @@ def determine_configuration_options():
     # todo: this may not exist if not processing blocklists
     gc.bocklist_outfile = gc.config['blocklist']['block_list_path']
 
+    # do we reload snort when done?
+    if gc.config.has_option('snort','pid_path'):
+        gc.pid_path = gc.config['snort']['pid_path']
+
     log.debug("Exiting Function determine_configuration_options()")
 
 
@@ -830,6 +839,12 @@ def print_operational_settings():
         log.verbose("No Blocklists will be downloaded.")
     else:
         log.verbose('Blocklist entries will be written to: ' + gc.config['blocklist']['block_list_path'])
+
+    # reload snort
+    if gc.pid_path:
+        log.verbose('Snort will be reloaded with new configuration, Pid loaded from: ' + gc.pid_path)
+    else:
+        log.verbose('Snort will NOT be reloaded with new configuration.')
 
     log.verbose('------------------------------------------------------------')
 

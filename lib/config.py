@@ -33,3 +33,5 @@ class Config(object):
 
     rule_mode      = 'simple'      # 'simple' or 'policy': how should rules be enabled in the output  # noqa
     policy_path    = None          # where to write the policy file if rule_mode is 'policy'  # noqa
+
+    pid_path       = None          # if != none, reload snort from the pid at this file path # noqa
