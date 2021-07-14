@@ -31,6 +31,10 @@ class Rule(object):
         >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
         Rule(rule_id:1:1000000001, state:ENABLED)
+        >>>
+        >>> r = Rule('# alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
+        >>> r
+        Rule(rule_id:1:1000000001, state:DISABLED)
         '''
 
         # Use regex to parse the rule bits
