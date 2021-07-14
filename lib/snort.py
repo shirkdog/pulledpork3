@@ -16,7 +16,7 @@ log = logger.Logger()
 ################################################################################
 
 # Rule regex patterns
-RULE_REGEX = re.compile(r'^(#\s*)?((\w+).+\(.+sid:(\d+);.+\))\s*$')
+RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.+\(.+sid:(\d+);.+\))\s*$')
 RULE_GID_REGEX = re.compile(r'gid:(\d+);')
 RULE_REV_REGEX = re.compile(r'rev:(\d+);')
 POLICY_RULE_REGEX = re.compile(r'^(\w+) \(gid:(\d+?); sid:(\d+?); (\w+);\)$')
@@ -35,11 +35,11 @@ class Rule(object):
         Example:
         >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
-        Rule(rule_id:1:1000000001, state:ENABLED)
+        Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         >>>
         >>> r = Rule('# alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
-        Rule(rule_id:1:1000000001, state:DISABLED)
+        Rule(rule_id:1:1000000001, action:alert, state:DISABLED)
         '''
 
         # Use regex to parse the rule bits
@@ -50,9 +50,9 @@ class Rule(object):
             raise ValueError('Rule text was not able to be parsed')
 
         # Save the easy bits
-        self._text = rule_parts[2]
+        self._text_no_action = rule_parts[3]
         self.sid = rule_parts[4]
-        self.action = rule_parts[3]
+        self.action = rule_parts[2]
         self.state = rule_parts[1] is None
         self.metadata = metadata.copy()
 
@@ -63,7 +63,7 @@ class Rule(object):
         self.rev = rev[1] if rev is not None else '0'
 
     def __repr__(self):
-        return f'Rule(rule_id:{self.rule_id}, state:{"ENABLED" if self.state else "DISABLED"})'
+        return f'Rule(rule_id:{self.rule_id}, action:{self.action}, state:{"ENABLED" if self.state else "DISABLED"})'
 
     @property
     def rule_id(self):
@@ -74,12 +74,30 @@ class Rule(object):
         Example:
         >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
-        Rule(rule_id:1:1000000001, state:ENABLED)
+        Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         >>>
         >>> r.rule_id
         '1:1000000001'
         '''
         return f'{self.gid}:{self.sid}'
+
+    @property
+    def _text(self):
+        '''
+        Return the rule text with the current action
+
+        Example:
+        >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
+        >>> r
+        Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
+        >>>
+        >>> r._text
+        'alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
+        >>> r.action = 'block'
+        >>> r._text
+        'block tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
+        '''
+        return f'{self.action} {self._text_no_action}'
 
     @property
     def text(self):
@@ -89,7 +107,7 @@ class Rule(object):
         Example:
         >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
-        Rule(rule_id:1:1000000001, state:ENABLED)
+        Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         >>>
         >>> r.text
         'alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
@@ -108,11 +126,11 @@ class Rule(object):
         Example:
         >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
-        Rule(rule_id:1:1000000001, state:ENABLED)
+        Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         >>>
         >>> r2 = r.copy()
         >>> r2
-        Rule(rule_id:1:1000000001, state:ENABLED)
+        Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         '''
 
         # Create a new copy of the rule and return it
@@ -372,7 +390,7 @@ class Rules(object):
 
                 # If the rule is enabled
                 if rule.state:
-                    fh.write(f'{rule.text}\n')
+                    fh.write(f'{rule._text}\n')
 
                 # Else iif the rule is disabled AND we're including the writing of them...
                 elif not rule.state and include_disabled:
@@ -463,7 +481,7 @@ class Rules(object):
         # Return the new Rules object
         return new_rules
 
-    def modify(self, state, rule_ids, ignore_missing=True):
+    def modify(self, rule_ids, ignore_missing=True, state=None, action=None):
         '''
         Update the state of the provided rule IDs
 
@@ -472,16 +490,20 @@ class Rules(object):
         >>> txt
         Rules(loaded:41987, enabled:41987, disabled:0)
         >>>
-        >>> txt.modify(False, '1:10018')
+        >>> txt.modify('1:10018', state=False)
         >>> txt
         Rules(loaded:41987, enabled:41986, disabled:1)
-        >>> txt.modify(False, ['1:10017', '1:2002'])
+        >>> txt.modify(['1:10017', '1:2002'], state=False)
         >>> txt
         Rules(loaded:41987, enabled:41984, disabled:3)
-        >>> txt.modify(True, '1:10018')
+        >>> txt.modify('1:10018', state=True)
         >>> txt
         Rules(loaded:41987, enabled:41985, disabled:2)
         '''
+
+        # Ensure we have something to modify
+        if state is None and action is None:
+            raise ValueError('No rule modifications to make; state or action required')
 
         # If rule_ids is a string, make it a list
         if isinstance(rule_ids, str):
@@ -496,11 +518,14 @@ class Rules(object):
                     raise ValueError(f'Missing rule ID {rule_id} to modify')
                 continue
 
-            # Get the rule and update state
+            # Get the rule and update it
             rule = self._all_rules[rule_id]
-            rule.state = state
+            if state is not None:
+                rule.state = state
+            if action is not None:
+                rule.action = action
 
-    def modify_by_regex(self, state, regex_pattern):
+    def modify_by_regex(self, regex_pattern, state=None, action=None):
         '''
         Update the state of the rules based on a regex pattern
 
@@ -509,10 +534,14 @@ class Rules(object):
         >>> txt
         Rules(loaded:41987, enabled:41987, disabled:0)
         >>>
-        >>> txt.modify_by_regex(False, 'test')
+        >>> txt.modify_by_regex('test', state=False)
         >>> txt
         Rules(loaded:41987, enabled:38345, disabled:3642)
         '''
+
+        # Ensure we have something to modify
+        if state is None and action is None:
+            raise ValueError('No rule modifications to make; state or action required')
 
         # If it's a string, compile it
         if isinstance(regex_pattern, str):
@@ -526,8 +555,11 @@ class Rules(object):
             # Is the rule a match?
             if regex_pattern.search(rule._text):
 
-                # Update the rule state
-                rule.state = state
+                # Update the rule
+                if state is not None:
+                    rule.state = state
+                if action is not None:
+                    rule.action = action
 
     def extend(self, other_rules):
         '''
