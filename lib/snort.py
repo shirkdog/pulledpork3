@@ -386,6 +386,9 @@ class Rules(object):
         # Setup our new instance
         new_rules = Rules()
 
+        # Copy the metadata over
+        new_rules._metadata = self._metadata.copy()
+
         # Copy over the rules cache
         for rule_id, rule in self._all_rules.items():
             new_rules._all_rules[rule_id] = rule.copy()
