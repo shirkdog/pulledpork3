@@ -439,7 +439,6 @@ class Rules(object):
     def from_policy(self, policy):
         '''
         Create a new Rules object based on a given Policy
-        Only the enabled rules in the policy will be included
 
         Example:
         >>> txt = Rules('../rules')
