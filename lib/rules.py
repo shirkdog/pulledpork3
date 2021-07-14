@@ -483,9 +483,11 @@ class Rules(object):
         # Work through the rule IDs
         for rule_id in rule_ids:
 
-            # Missing
-            if rule_id not in self._all_rules and not ignore_missing:
-                raise ValueError(f'Missing rule ID {rule_id} to modify')
+            # Missing?
+            if rule_id not in self._all_rules:
+                if not ignore_missing:
+                    raise ValueError(f'Missing rule ID {rule_id} to modify')
+                continue
 
             # Get the rule and update state
             rule = self._all_rules[rule_id]
