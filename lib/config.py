@@ -47,7 +47,7 @@ def read_config(filename):
     only -- no parsing has changed.
 
     Example:
-    >>> parse_config('etc/pulledpork.conf')
+    >>> read_config('etc/pulledpork.conf')
     {'community_ruleset': False, 'registered_ruleset': False,
      'lightspd_ruleset': False, 'oinkcode': 'xxxxx',
      'snort_blocklist': False, 'et_blocklist': False,
