@@ -668,6 +668,29 @@ class Policy(object):
                     'state': state
                 }
 
+    def copy(self):
+        '''
+        Create a copy of the Policy object
+
+        Example:
+        >>> pol = Policy('balanced', '../rules/rulestates-balanced-ips.states')
+        >>> pol
+        Policy(name:balanced, rules:8579)
+        >>>
+        >>> new = pol.copy()
+        >>> new
+        Policy(name:balanced, rules:8579)
+        '''
+
+        # Setup our new instance
+        new_policy = Policy(self.name)
+
+        # Copy over the rules
+        new_policy.rules = self.rules.copy()
+
+        # Return the new Rules object
+        return new_policy
+
     def extend(self, other_policy):
         '''
         Extend the current Policy object to include another Policy
@@ -857,6 +880,30 @@ class Policies(object):
         if policy_name in self._policies:
             res = self._policies[policy_name]
         return res
+
+    def copy(self):
+        '''
+        Create a copy of this Policies object
+
+        Example:
+        >>> pols = Policies('../rules')
+        >>> pols
+        Policies(loaded:5, names:[max-detect, balanced, security, connectivity, none])
+        >>>
+        >>> new = pols.copy()
+        >>> new
+        Policies(loaded:5, names:[max-detect, balanced, security, connectivity, none])
+        '''
+
+        # Setup our new instance
+        new_policies = Policies()
+
+        # Copy over the policies
+        for policy_name, policy in self._policies.items():
+            new_policies._policies[policy_name] = policy.copy()
+
+        # Return the new Rules object
+        return new_policies
 
     def extend(self, other_thing):
         '''
