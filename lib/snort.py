@@ -481,7 +481,7 @@ class Rules(object):
         # Return the new Rules object
         return new_rules
 
-    def modify(self, rule_ids, ignore_missing=True, state=None, action=None):
+    def modify(self, rule_ids, state=None, action=None, ignore_missing=True):
         '''
         Update the state of the provided rule IDs
 
