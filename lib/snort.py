@@ -50,7 +50,7 @@ class Rule(object):
             raise ValueError('Rule text was not able to be parsed')
 
         # Save the easy bits
-        self._text_no_action = rule_parts[3]
+        self._raw = rule_parts[3]
         self.sid = rule_parts[4]
         self.action = rule_parts[2]
         self.state = rule_parts[1] is None
@@ -82,25 +82,25 @@ class Rule(object):
         return f'{self.gid}:{self.sid}'
 
     @property
-    def _text(self):
+    def text(self):
         '''
-        Return the rule text with the current action
+        Return the rule text with the current action, ignoring state
 
         Example:
         >>> r = Rule('alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; content:"test"; sid:1000000001; rev:1;)')
         >>> r
         Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         >>>
-        >>> r._text
+        >>> r.text
         'alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
         >>> r.action = 'block'
-        >>> r._text
+        >>> r.text
         'block tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
         '''
-        return f'{self.action} {self._text_no_action}'
+        return f'{self.action} {self._raw}'
 
     @property
-    def text(self):
+    def stateful_text(self):
         '''
         Return the enabled or disabled (commented-out) rule text
 
@@ -109,15 +109,15 @@ class Rule(object):
         >>> r
         Rule(rule_id:1:1000000001, action:alert, state:ENABLED)
         >>>
-        >>> r.text
+        >>> r.stateful_text
         'alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
         >>> r.state = False
-        >>> r.text
+        >>> r.stateful_text
         '# alert tcp $EXTERNAL_NET any -> $HOME_NET 1234 (msg:"This is a test"; flow:established,to_server; content:"test"; sid:1000000001; rev:1;)'
         '''
         if self.state:
-            return self._text
-        return f'# {self._text}'
+            return self.text
+        return f'# {self.text}'
 
     def copy(self):
         '''
@@ -134,7 +134,7 @@ class Rule(object):
         '''
 
         # Create a new copy of the rule and return it
-        new_rule = Rule(self.text, **self.metadata)
+        new_rule = Rule(self.stateful_text, **self.metadata)
         return new_rule
 
 
@@ -390,11 +390,11 @@ class Rules(object):
 
                 # If the rule is enabled
                 if rule.state:
-                    fh.write(f'{rule._text}\n')
+                    fh.write(f'{rule.text}\n')
 
                 # Else iif the rule is disabled AND we're including the writing of them...
                 elif not rule.state and include_disabled:
-                    fh.write(f'{rule.text}\n')
+                    fh.write(f'# {rule.text}\n')
 
     def copy(self, rule_state=None):
         '''
@@ -553,7 +553,7 @@ class Rules(object):
         for rule in self._all_rules.values():
 
             # Is the rule a match?
-            if regex_pattern.search(rule._text):
+            if regex_pattern.search(rule.text):
 
                 # Update the rule
                 if state is not None:
