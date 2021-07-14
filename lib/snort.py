@@ -1,9 +1,14 @@
 import os
 import re
-import logging
+
+from . import logger
 
 
-logger = logging.getLogger(__name__)
+################################################################################
+# Logging
+################################################################################
+
+log = logger.Logger()
 
 
 ################################################################################
@@ -329,12 +334,12 @@ class Rules(object):
                 try:
                     rule = Rule(line, **metadata)
                 except ValueError as e:
-                    logger.warning(f'{rules_file}:{line_num} - {e}')
+                    log.verbose(f'{rules_file}:{line_num} - {e}')
                     continue
 
                 # Already exists?
                 if rule.rule_id in self._all_rules:
-                    logger.warning(f'{rules_file}:{line_num} - {rule.rule_id} already exists; overwriting')
+                    log.debug(f'{rules_file}:{line_num} - {rule.rule_id} already exists; overwriting')
 
                 # Save the rule to cache
                 # Add/remove from the disabled index as required
