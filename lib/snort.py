@@ -452,10 +452,6 @@ class Rules(object):
         Rules(loaded:41987, enabled:41987, disabled:0)
         '''
 
-        # Wut?
-        if not isinstance(policy, Policy):
-            raise ValueError(f'Not a recognized Policy object: {policy}')
-
         # Setup our new instance and apply the policy
         new_rules = self.copy()
         new_rules.apply_policy(policy)
