@@ -579,9 +579,6 @@ class Rules(object):
         if not isinstance(other_rules, Rules):
             raise ValueError(f'Not a recognized Rules object: {other_rules}')
 
-        # Update the rules
-        self._all_rules.update(other_rules._all_rules)
-
         # Work through the rules
         for new_rule in other_rules:
 
