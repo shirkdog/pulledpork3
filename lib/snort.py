@@ -144,12 +144,6 @@ class Rule(object):
 
 class Rules(object):
 
-    # The files we'll always ignore
-    IGNORED_FILES = [
-        'includes.rules',
-        'snort3-deleted.rules'
-    ]
-
     def __init__(self, rules_path=None, ignored_files=[], **metadata):
         '''
         Load all the rule files from the given rules path, except those
@@ -177,8 +171,6 @@ class Rules(object):
 
                 # Check for rules files, and those we don't want
                 if not rules_file.name.endswith('.rules'):
-                    continue
-                if rules_file.name in self.IGNORED_FILES:
                     continue
                 if rules_file.name in ignored_files:
                     continue
