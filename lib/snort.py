@@ -350,18 +350,23 @@ class Rules(object):
 
                 # Attempt to parse the line as a rule
                 try:
-                    rule = Rule(line, **metadata)
+                    new_rule = Rule(line, **metadata)
                 except ValueError as e:
                     log.verbose(f'{rules_file}:{line_num} - {e}')
                     continue
 
-                # Already exists?
-                if rule.rule_id in self._all_rules:
-                    log.debug(f'{rules_file}:{line_num} - {rule.rule_id} already exists; overwriting')
+                # If the rule is already present, we want to keep
+                # the one with the higher rev
+                if new_rule.rule_id in self._all_rules:
+                    current_rule = self[new_rule.rule_id]
+
+                    # If the current rule has a later or same rev, move on
+                    if current_rule.rev >= new_rule.rev:
+                        log.verbose(f'{rules_file}:{line_num} - Duplicate rule_id with same/earlier rev; skipping')
+                        continue
 
                 # Save the rule to cache
-                # Add/remove from the disabled index as required
-                self._all_rules[rule.rule_id] = rule
+                self._all_rules[new_rule.rule_id] = new_rule
 
     def write_file(self, rules_file, include_disabled=False, header=None):
         '''
@@ -584,6 +589,22 @@ class Rules(object):
 
         # Update the rules
         self._all_rules.update(other_rules._all_rules)
+
+        # Work through the rules
+        for new_rule in other_rules:
+
+            # If the rule is already present, we want to keep
+            # the one with the higher rev
+            if new_rule.rule_id in self._all_rules:
+                current_rule = self[new_rule.rule_id]
+
+                # If the current rule has a later or same rev, move on
+                if current_rule.rev >= new_rule.rev:
+                    log.verbose('Duplicate rule_id with same/earlier rev; skipping')
+                    continue
+
+            # Save the rule to cache
+            self._all_rules[new_rule.rule_id] = new_rule
 
 
 ################################################################################
