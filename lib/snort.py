@@ -260,7 +260,7 @@ class Rules(object):
         ...     rule
         ...     break
         ...
-        Rule(rule_id:1:24511, state:ENABLED)
+        Rule(rule_id:1:24511, action:alert, state:ENABLED)
         '''
         next_rule = self._iter.__next__()
         return next_rule
@@ -275,7 +275,7 @@ class Rules(object):
         Rules(loaded:41987, enabled:41987, disabled:0)
         >>>
         >>> txt['1:10018']
-        Rule(rule_id:1:10018, state:ENABLED)
+        Rule(rule_id:1:10018, action:alert, state:ENABLED)
         '''
         rule = self._all_rules[rule_id]
         return rule
@@ -292,7 +292,7 @@ class Rules(object):
         >>> txt.get('1:1', 'nope')
         'nope'
         >>> txt.get('1:10018')
-        Rule(rule_id:1:10018, state:ENABLED)
+        Rule(rule_id:1:10018, action:alert, state:ENABLED)
         '''
 
         # Get the rule
