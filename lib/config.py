@@ -74,7 +74,7 @@ def read_config(filename):
             # Collect and strip the config bits
             key, val = line.split('=', 1)
             key = key.strip().lower()
-            val = val.strip(' "\'\r\n')
+            val = val.strip(' "\'\t\r\n')
 
             # Convert some things as needed booleans and ints
             if val.lower() == 'true':
