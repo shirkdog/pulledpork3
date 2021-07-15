@@ -7,7 +7,7 @@ class Config(object):
     start the concept of the class
     '''
 
-    start_time     = strftime('%Y.%m.%d-%H.%M.%S' , localtime())  # noqa
+    start_time     = strftime('%Y.%m.%d-%H.%M.%S', localtime())  # noqa
 
     tempdir        = ''        # path to our temp working directory  # noqa
     delete_tempdir = True      # should the tempdir be deleted on exit
@@ -35,3 +35,60 @@ class Config(object):
     policy_path    = None          # where to write the policy file if rule_mode is 'policy'  # noqa
 
     pid_path       = None          # if != none, reload snort from the pid at this file path # noqa
+
+
+def read_config(filename):
+    '''
+    Parse the config file line-by-line and return a dict
+
+    Adding this to propose replacing ConfigParser so the
+    config can be more like the original PulledPork config
+    with no need for config "sections". This is a proposal
+    only -- no parsing has changed.
+
+    Example:
+    >>> read_config('etc/pulledpork.conf')
+    {'community_ruleset': False, 'registered_ruleset': False,
+     'lightspd_ruleset': False, 'oinkcode': 'xxxxx',
+     'snort_blocklist': False, 'et_blocklist': False,
+     'block_list_path': '/usr/local/etc/lists/default.blocklist',
+     'ips_policy': 'balanced', 'rule_mode': 'simple',
+     'rule_path': '/usr/local/etc/rules/pulledpork.rules',
+     'local_rules': '/usr/local/etc/rules/local.rules',
+     'include_disabled_rules': False, 'process_so_rules': True,
+     'sorule_path': '/usr/local/etc/so_rules/',
+     'distro': 'ubuntu-x64', 'configuration_number': '3.0.0-BETA'}
+    '''
+
+    # The resulting config
+    res = {}
+
+    # Open the config and work through it line-by-line
+    with open(filename, 'r') as fh:
+        for line in fh.readlines():
+
+            # Comment or no variable being set? Move on
+            if line.startswith('#') or '=' not in line:
+                continue
+
+            # Collect and strip the config bits
+            key, val = line.split('=', 1)
+            key = key.strip().lower()
+            val = val.strip(' "\'\t\r\n')
+
+            # Convert some things as needed booleans and ints
+            if val.lower() == 'true':
+                val = True
+            elif val.lower() == 'false':
+                val = False
+            else:
+                try:
+                    val = int(val)
+                except ValueError:
+                    pass
+
+            # Save the key-value pair to the config
+            res[key] = val
+
+    # Return the result
+    return res
