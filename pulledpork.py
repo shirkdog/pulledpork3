@@ -479,7 +479,7 @@ def main():
 
     # copy .so rules from tempdir
     # todo: delete old rules
-    if gc.process_so_rules:
+    if gc.get('sorule_path'):
         so_src_folder = gc.tempdir + sep + 'so_rules' + sep
         src_files = listdir(so_src_folder)
         for file_name in src_files:
@@ -622,7 +622,7 @@ def print_operational_settings():
         log.verbose('The distro used for processing is: ' + gc.distro)
     log.verbose('The ips policy used for processing is: ' + gc.ips_policy)
 
-    if gc.process_so_rules:
+    if gc.get('sorule_path'):
         log.verbose('Pre-compiled (.so) rules will be processed.')
         log.verbose('Pre-compiled (.so) files will be saved to: ' + gc.sorule_path)
     else:
@@ -670,10 +670,10 @@ def print_operational_settings():
     if gc.et_blocklist:
         log.verbose("ET blocklist will be downloaded")
 
-    for bl in gc.blocklist:
+    for bl in gc.blocklist_urls:
         log.verbose("Other blocklist will be downloaded: " + bl)
 
-    if not any([gc.snort_blocklist, gc.et_blocklist, len(gc.blocklist)]):
+    if not any([gc.snort_blocklist, gc.et_blocklist, len(gc.blocklist_urls)]):
         log.verbose("No Blocklists will be downloaded.")
     else:
         log.verbose('Blocklist entries will be written to: ' + gc.blocklist_path)
@@ -981,7 +981,7 @@ def get_blocklist_urls():
         urls.append(ET_BLOCKLIST_URL)
         log.verbose("- Will download ET blocklist")
 
-    for bl in gc.blocklist:
+    for bl in gc.blocklist_urls:
         log.verbose(f"- Will download Other blocklist: {bl}")
         urls.append(bl)
 

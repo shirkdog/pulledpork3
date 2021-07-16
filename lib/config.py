@@ -158,10 +158,10 @@ class Config(object):
 
         # If additional blocklists are not set, default to empty list
         # Otherwise create a list from the value
-        if not self.defined('blocklist'):
-            self.blocklist = []
+        if not self.defined('blocklist_urls'):
+            self.blocklist_urls = []
         else:
-            self.blocklist = [url.strip() for url in self.blocklist.split(',')]
+            self.blocklist_urls = [url.strip() for url in self.blocklist_urls.split(',')]
 
         # Critical checks below
 
