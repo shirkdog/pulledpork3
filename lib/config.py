@@ -127,6 +127,8 @@ class Config(object):
         for key, val in self.items():
             log.debug(f'  Key: {key}\tValue: {val}')
 
+        log.debug(f'Exiting: Config.load({config_file})')
+
     def validate(self):
         '''
         Attempt to validate the config
