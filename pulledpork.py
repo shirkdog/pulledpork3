@@ -134,6 +134,9 @@ def main():
     gc.tempdir = get_temp_directory(gc.temp_path, gc.start_time)
     log.verbose("Temporary working directory is: " + gc.tempdir)
 
+    # Get the policy file from name (for now)
+    gc.ips_policy = get_policy(gc.ips_policy)
+
     # Are we missing the Snort version in config?
     if not gc.defined('snort_version'):
         gc.snort_version = get_snort_version(gc.get('snort_path'))
@@ -1223,6 +1226,28 @@ def get_distro():
     # if not config file, try to determine from OS
     # todo:
     return None
+
+
+def get_policy(policy):
+    '''
+    Determine the current ips policy
+    See: https://www.snort.org/faq/why-are-rules-commented-out-by-default
+    '''
+
+    log.debug("Determining policy from config file.")
+    log.debug('ips_policy is: ' + policy)
+
+    # convert policy to actual filename
+    if policy == 'connectivity':
+        return 'rulestates-connectivity-ips.states'
+    elif policy == 'balanced':
+        return 'rulestates-balanced-ips.states'
+    elif policy == 'security':
+        return 'rulestates-security-ips.states'
+    elif policy == 'max-detect':
+        return 'rulestates-max-detect-ips.states'
+    else:
+        return 'none'
 
 
 # *****************************************************************************
