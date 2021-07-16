@@ -1,94 +1,222 @@
 from time import strftime, localtime
+from tempfile import gettempdir
 
+from . import logger
+
+
+################################################################################
+# Logging
+################################################################################
+
+log = logger.Logger()
+
+
+################################################################################
+# Constants
+################################################################################
+
+VALID_IPS_POLICIES = ['none', 'connectivity', 'balanced', 'security', 'max-detect']
+
+
+################################################################################
+# Config
+################################################################################
 
 class Config(object):
-    '''
-    Before doing any of the hard work, this is sufficient to
-    start the concept of the class
-    '''
 
-    start_time     = strftime('%Y.%m.%d-%H.%M.%S', localtime())  # noqa
+    # Save the start time for the app
+    start_time = strftime('%Y.%m.%d-%H.%M.%S', localtime())
 
-    tempdir        = ''        # path to our temp working directory  # noqa
-    delete_tempdir = True      # should the tempdir be deleted on exit
+    # Target for the loaded config, defined values are defaults
+    _config = {
+        'community_ruleset': False,
+        'registered_ruleset': False,
+        'lightspd_ruleset': False,
+        'snort_blocklist': False,
+        'et_blocklist': False,
+        'ips_policy': 'connectivity',
+        'include_disabled_rules': False,
+        'delete_temp_path': True,
+    }
 
-    args           = ''        # command-line arguments from argparse  # noqa
-    config         = ''        # config file values, parsed by ConfigParser  # noqa
+    # Map some of the methods from the _config dict to this class
+    __contains__ = _config.__contains__
+    __iter__ = _config.__iter__
+    __getitem__ = _config.__getitem__
+    get = _config.get
+    items = _config.items
+    keys = _config.keys
 
-    halt_on_warn   = True      # terminate on warning  # noqa
+    # Supporting functions
 
-    snort_version  = ''                # snort version (from config or determined programmatically)  # noqa
-    ips_policy     = 'connectivity'    # what rules should be enabled/disabled by policy  # noqa
-    distro         = None              # distro needed for precompiled so rules  # noqa
-    rules_outfile  = ''                # where to write combined rules file  # noqa
-    include_disabled_rules = False     # should disabled rules be included in output
-    process_so_rules = False           # are we processing so rules
-    sorule_path    = ''                # where to copy so rules  # noqa
-    ignore_rules_files = []            # what filenames to ignore in the rulesets
+    def __getattr__(self, key):
+        '''
+        Provide direct access to the dict, or args, via .key
+        '''
+        if key in self._config:
+            return self._config[key]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
 
-    bocklist_outfile = ''          # where to output our combined blocklist file  # noqa
+    def defined(self, key):
+        '''
+        Return True or False whether a config key is defined
+        '''
+        res = self.get(key, None)
+        if isinstance(res, bool):
+            return True
+        return bool(res)
 
-    oinkcode       = None          # snort oninkcode for downloading rulesets and filtering out of output  # noqa
-    print_oinkcode = False         # should the Oinkcode be included in the output (usually no)
+    def load(self, config_file):
+        '''
+        Parse the config file line-by-line and populate _config
+        '''
 
-    rule_mode      = 'simple'      # 'simple' or 'policy': how should rules be enabled in the output  # noqa
-    policy_path    = None          # where to write the policy file if rule_mode is 'policy'  # noqa
+        log.debug(f'Entering: Config.load({config_file})')
 
-    pid_path       = None          # if != none, reload snort from the pid at this file path # noqa
+        # Open the config and work through it line-by-line
+        with open(config_file, 'r') as fh:
+            for line in fh.readlines():
 
+                # Comment or no variable being set? Move on
+                if line.startswith('#') or '=' not in line:
+                    continue
 
-def read_config(filename):
-    '''
-    Parse the config file line-by-line and return a dict
+                # Collect and strip the config bits
+                key, val = line.split('=', 1)
+                key = key.strip().lower()
+                val = val.strip(' "\'\t\r\n')
 
-    Adding this to propose replacing ConfigParser so the
-    config can be more like the original PulledPork config
-    with no need for config "sections". This is a proposal
-    only -- no parsing has changed.
+                # Convert some things as needed booleans and ints
+                if val.lower() == 'true':
+                    val = True
+                elif val.lower() == 'false':
+                    val = False
+                else:
+                    try:
+                        val = int(val)
+                    except ValueError:
+                        pass
 
-    Example:
-    >>> read_config('etc/pulledpork.conf')
-    {'community_ruleset': False, 'registered_ruleset': False,
-     'lightspd_ruleset': False, 'oinkcode': 'xxxxx',
-     'snort_blocklist': False, 'et_blocklist': False,
-     'block_list_path': '/usr/local/etc/lists/default.blocklist',
-     'ips_policy': 'balanced', 'rule_mode': 'simple',
-     'rule_path': '/usr/local/etc/rules/pulledpork.rules',
-     'local_rules': '/usr/local/etc/rules/local.rules',
-     'include_disabled_rules': False, 'process_so_rules': True,
-     'sorule_path': '/usr/local/etc/so_rules/',
-     'distro': 'ubuntu-x64', 'configuration_number': '3.0.0-BETA'}
-    '''
+                # TODO: Evaluate whether below handler is desired
+                # ~~~START~~~
 
-    # The resulting config
-    res = {}
+                # # If the key already exists, we'll turn the val into a list
+                # if key in self._config:
 
-    # Open the config and work through it line-by-line
-    with open(filename, 'r') as fh:
-        for line in fh.readlines():
+                #     # Get the old value
+                #     old_val = self._config[key]
 
-            # Comment or no variable being set? Move on
-            if line.startswith('#') or '=' not in line:
-                continue
+                #     # If it's a list, append to it
+                #     if isinstance(old_val, list):
+                #         old_val.append(val)
 
-            # Collect and strip the config bits
-            key, val = line.split('=', 1)
-            key = key.strip().lower()
-            val = val.strip(' "\'\t\r\n')
+                #     # Otherwise create a new list with the vals
+                #     else:
+                #         old_val = [old_val, val]
 
-            # Convert some things as needed booleans and ints
-            if val.lower() == 'true':
-                val = True
-            elif val.lower() == 'false':
-                val = False
-            else:
-                try:
-                    val = int(val)
-                except ValueError:
-                    pass
+                #     # Replace val with the list
+                #     val = old_val
 
-            # Save the key-value pair to the config
-            res[key] = val
+                # ~~~END~~~
 
-    # Return the result
-    return res
+                # Save the key-value pair to the config
+                self._config[key] = val
+
+        # Debug log the config
+        log.debug(f'After loading configuration from: {config_file}')
+        for key, val in self.items():
+            log.debug(f'  Key: {key}\tValue: {val}')
+
+    def validate(self):
+        '''
+        Attempt to validate the config
+        Also populate defaults that was only want to setup
+        if not in config (e.g. temp path)
+        '''
+
+        log.debug('Entering: Config.validate()')
+
+        # Non-critical checks
+
+        # Setup the temp path if not set (not a failure)
+        if not self.defined('temp_path'):
+            self.temp_path = gettempdir()
+
+        # If additional local_rules are not set, default to empty list
+        # Otherwise create a list from the value
+        if not self.defined('local_rules'):
+            self.local_rules = []
+        else:
+            self.local_rules = [url.strip() for url in self.local_rules.split(',')]
+
+        # If ignored files is not set, default to empty list
+        # Otherwise create a list from the value
+        if not self.defined('ignore'):
+            self.ignore = []
+        else:
+            self.ignore = [file.strip() for file in self.ignore.split(',')]
+
+        # If additional blocklists are not set, default to empty list
+        # Otherwise create a list from the value
+        if not self.defined('blocklist'):
+            self.blocklist = []
+        else:
+            self.blocklist = [url.strip() for url in self.blocklist.split(',')]
+
+        # Critical checks below
+
+        # Missing rule path?
+        if not self.defined('rule_path'):
+            log.error('Required `rule_path` is missing in configuration')
+
+        # Unexpected oinkcode setting?
+        if self.defined('oinkcode') and len(self.oinkcode) != 40:
+            log.warning('`oinkcode` is not the expected format in configuration')
+
+        # Rule mode unset?
+        if not self.defined('rule_mode'):
+            log.error('Required `rule_mode` is missing in configuration')
+
+        # Lower the rule mode amd ips_policy
+        self.rule_mode = self.rule_mode.lower()
+        self.ips_policy = self.ips_policy.lower()
+
+        # Rule mode invalid?
+        if self.rule_mode not in ('simple', 'policy'):
+            log.error(f'`rule_mode` has an unexpected value: {self.rule_mode}')
+
+        # Using policy rule mode...
+        if self.rule_mode == 'policy':
+
+            # No policy_path?
+            if not self.defined('policy_path'):
+                log.error('`rule_mode` is set to "policy", but `policy_path` is missing in configuration')
+
+            # Invalid IPS policy?
+            if self.ips_policy not in VALID_IPS_POLICIES:
+                log.error(f'`ips_policy` has an unexpected policy name: {self.ips_policy}')
+
+        # Enabled more than one official ruleset?
+        num_enabled_rulesets = [self.community_ruleset, self.registered_ruleset, self.lightspd_ruleset].count(True)
+        if num_enabled_rulesets > 1:
+            log.warning('More than one official ruleset is selected; not recommended since there is a lot of overlap')
+
+        # Increment the enabled count if we have local rules enabled
+        if self.defined('local_rules'):
+            num_enabled_rulesets += 1
+
+        # No rulesets enabled?
+        if num_enabled_rulesets == 0:
+            log.error('No rulesets have been enabled; rule processing cannot continue')
+
+        # Check for enabled rulesets that require an oinkcode
+        if any([self.registered_ruleset, self.lightspd_ruleset]) and not self.defined('oinkcode'):
+            log.error('`oinkcode` is required when registered or LightSPD rulesets are enabled')
+
+        # Have blocklists enabled, but no target file?
+        if any([self.snort_blocklist, self.et_blocklist]) and not self.defined('blocklist_path'):
+            log.error('One or more blocklists are enabled but `blocklist_path` is missing in configuration')
+
+        # Do we need to ensure distro is set in config?
+
+        log.debug('Exiting: Config.validate()')

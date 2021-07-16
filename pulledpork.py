@@ -20,7 +20,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 '''
 
 from argparse import ArgumentParser         # command line parameters parser
-from configparser import ConfigParser       # to parse the conf file
 from json import load                       # to load json manifest file in lightSPD
 from os import environ, listdir, scandir, mkdir, kill
 from os.path import isfile, join, sep, abspath, basename, isdir
@@ -31,7 +30,6 @@ from signal import SIGHUP
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
 from tarfile import open as open_tar        # to extract tgz ruleset file
-from tempfile import gettempdir             # temp directory mgmt
 from urllib.parse import urlsplit           # get filename from url
 
 # Third-party libraries
@@ -107,6 +105,9 @@ def main():
     # Also setup halt on warn as requested
     log.halt_on_warn = not gc.args.ignore_warn
 
+    # Save from args
+    gc.delete_temp_path = not gc.args.keep_temp_dir
+
     # Load the configuration File from command line (-c FILENAME). Verify exists, and only 1 entry.
     if not gc.args.configuration:
         log.error("The following arguments are required: -c/--configuration <file>")
@@ -114,44 +115,28 @@ def main():
         log.warning('Multiple entries passed as -c/--configuration.  Only a single entry permitted.')
 
     config_file = gc.args.configuration[0]  # this is a list of one element
-    log.info('Loading configuration file: ' + config_file)
 
-    # load configuration file into config variable with ConfigParser
-    gc.config = ConfigParser(delimiters=('='))
+    # load configuration file
+    log.info(f'Loading configuration file: {config_file}')
     try:
-        gc.config.read_file(open(config_file, "r"))
+        gc.load(config_file)
     except Exception as e:
-        log.error("Can not load required configuration file. Error: " + str(e))
+        log.error(f'Unable to load configuration file: {e}')
 
-    # if we are given an oinkcode, we must save it to the gc.oinkcode variable
-    # so we can filter it out from printed output (in our 'log' function)
-    if gc.config.has_option('rulesets', 'oinkcode'):
-        gc.oinkcode = gc.config['rulesets']['oinkcode']
-
-    log.debug('After parsing configuration file, the Dictionary returned is:')
-    for sect in gc.config.sections():
-        log.debug("\tSection: " + sect)
-        for k, v in gc.config.items(sect):
-            log.debug("\t\tKey: " + k + "\tValue: " + v)
-
-    # Validate configuration file (logical validation of settings; error out if issue)
-    #   determine fields for GC from command line and config file, save in global gc
-    # todo: join these two functions into single function
-    validate_configuration()
-    determine_configuration_options()
+    # Attempt to validate the config
+    gc.validate()
 
     # Update logging if we're not printing the oinkcode
-    if not gc.print_oinkcode:
+    if gc.oinkcode and not gc.args.print_oinkcode:
         log.add_hidden_string(gc.oinkcode)
 
     # Create a temp working directory (path stored as a string)
-    gc.tempdir = get_temp_directory(gc.start_time)
+    gc.tempdir = get_temp_directory(gc.temp_path, gc.start_time)
     log.verbose("Temporary working directory is: " + gc.tempdir)
 
-    # Determine a set of required info, from config file or from the computer itself
-    gc.snort_version = get_snort_version()
-    gc.distro = get_distro()
-    gc.ips_policy = get_policy()
+    # Are we missing the Snort version in config?
+    if not gc.defined('snort_version'):
+        gc.snort_version = get_snort_version(gc.get('snort_path'))
 
     # we now have all required info to run, print the configuration to screen
     print_operational_settings()
@@ -478,7 +463,7 @@ def main():
 
     #   OUTPUT
 
-    write_rulesets_to_disk(all_rules, gc.rules_outfile)
+    write_rulesets_to_disk(all_rules, gc.rule_path)
 
     # write the policy to disk
     if gc.rule_mode == 'policy':
@@ -513,7 +498,7 @@ def main():
     # -----------------------------------------------------------------------------
     # Relad Snort
 
-    if gc.pid_path:
+    if gc.get('pid_path'):
         with open(gc.pid_path, 'r') as f:
             pid = f.readline().strip()
             pid = int(pid)
@@ -528,7 +513,7 @@ def main():
 
     # -----------------------------------------------------------------------------
     # Delete temp dir
-    if not gc.delete_tempdir:
+    if not gc.delete_temp_path:
         log.verbose("Not deleting temporary working directory: " + gc.tempdir)
     else:
         log.verbose("Attempting to delete temporary working directory: " + gc.tempdir)
@@ -603,149 +588,6 @@ def parse_argv():
     return arg_parser.parse_args()
 
 
-def validate_configuration():
-    '''
-    Validate the command line params and the config file (-c <file>)
-    also determine the flags and params here
-    '''
-
-    log.verbose("Validating input configuration file settings.")
-
-    # Validate Section: CONFIGURATION
-    # required: [configuration]rule_path -> where to save combined rules file
-    if not gc.config.has_option('configuration', 'rule_path'):
-        log.error("Required rule_path in [configuration] section is missing.")
-
-    # is our oinkcode valid format?
-    if gc.oinkcode is not None and len(gc.oinkcode) != 40:
-        log.warning("Oinkcode does not seem to be the correct format.")
-
-    # do we know how to write enabled rules?
-    if gc.config.has_option('configuration', 'rule_mode'):
-        if gc.config['configuration']['rule_mode'] != 'simple' and gc.config['configuration']['rule_mode'] != 'policy':
-            log.error('"rule_mode" is not set or is an invalid value. value is: ' + gc.config['configuration']['rule_mode'])
-
-    # if rule_mode == policy, do we have an output path
-    if gc.config['configuration']['rule_mode'] == 'policy' and not gc.config.has_option('configuration', 'policy_path'):
-        log.error('"policy_path" is not set. this is required when rule_mode is "policy".')
-
-    # Validate Section: RULESETS
-
-    # are we getting rulesets from local file (command line) or from online (config file)
-    if gc.args.file or gc.args.folder:
-        log.verbose("Rulesets will be loaded from local system, not online sources.")
-
-        # valide command line args (other than ones checked by argparser)
-        if gc.args.file and not isfile(gc.args.file):
-            log.error("File path passed by -f is not a file or does not exist: " + gc.args.file)
-
-        if gc.args.folder:
-            if not isdir(gc.args.folder):
-                log.error("Folder path passed by -F is not a folder or does not exist: " + gc.args.folder)
-            if not listdir(gc.args.folder):
-                log.error("Folder path passed by -F contains no files.")
-    else:
-        log.debug("Rulesets will be downloaded from online sources (not the local filesystem).")
-
-        # We are not using local rulesets, so we need online rulesets (note, user might only want blocklists,
-        # so this is a warning that can be overridden.)
-        if not gc.config.has_section('rulesets'):
-            log.warning("Missing section [rulesets] in configuration file.  No rulesets can be downloaded")
-
-        # log warning if downloading multiple snort rulesets (only 1 recommended)
-        if [gc.config['rulesets'].getboolean('registered_ruleset'),
-            gc.config['rulesets'].getboolean('LightSPD_ruleset'),
-            gc.config['rulesets'].getboolean('community_ruleset')].count(True) > 1:
-            log.warning("You have specified more than one Ruleset from Snort/Talos. This is not recommended (community, registered, and LightSPD have a lot of overlap).")
-
-        # make sure we are getting rules from somewhere (local.rules, snort ruleset, or URL(todo))
-        if not any([gc.config['rulesets'].getboolean('registered_ruleset'),
-                    gc.config['rulesets'].getboolean('LightSPD_ruleset'),
-                    gc.config['rulesets'].getboolean('community_ruleset'),
-                    gc.config.has_option('configuration', 'local_rules')]):
-            log.warning("No rulesets have been specified for download. Rule Processing won't happen.")
-
-        # if we are downloading the registered or lightSPD ruleset, we also require a oinkcode
-        if gc.config['rulesets'].getboolean('registered_ruleset') or gc.config['rulesets'].getboolean('LightSPD_ruleset'):
-            if not gc.config.has_option('rulesets', 'oinkcode'):
-                log.error("Oinkcode is requred for the registered or LightSPD rulesets. These will not be downloaded.")
-
-        # todo: ET RULESETS
-
-        # todo: if process_so_rules
-
-    # blocklist validation
-    # TODO: if we have blocklists to download, we require block_list_path
-    # TODO: extra blocklists
-    # TODO; if we havea block_list_path but no URLS, warn
-    # TODO: test if [blocklist] does not exist
-    if any([gc.config['blocklist'].getboolean('snort_blocklist'),
-            gc.config['blocklist'].getboolean('et_blocklist')]) and gc.bocklist_outfile is None:
-        log.error("No block_list_path specified in configuration. This is required if you are downloading blocklists.")
-
-    log.verbose("Done Validating input configuration file settings. No fatal errors.")
-
-
-def determine_configuration_options():
-    '''
-    Combine the command line params and the config file (-c <file>)
-      save back to global gc
-    todo: use .lower() on all options
-    todo: remove quotes from file paths
-    '''
-
-    log.debug("Entering Function determine_configuration_options()")
-
-    # do we print the oinkcode in the output
-    gc.print_oinkcode = gc.args.print_oinkcode
-
-    # Do we delete temp directory on exit
-    gc.delete_tempdir = not gc.args.keep_temp_dir
-
-    # where to write the snort rules (snort.rules)
-    gc.rules_outfile = gc.config['configuration']['rule_path']
-
-    # do we include disabled rules in the output?
-    if gc.config.has_option('configuration', 'include_disabled_rules'):
-        gc.include_disabled_rules = gc.config['configuration'].getboolean('include_disabled_rules')
-
-    # what is our rule_policy (write simple rules, or use a policy file)
-    if gc.config.has_option('configuration', 'rule_mode'):
-        gc.rule_mode = gc.config['configuration']['rule_mode'].lower()
-
-    # if we are in policy mode, we need to get the path to write the policy
-    if gc.rule_mode == 'policy':
-        if gc.config.has_option('configuration', 'policy_path'):
-            gc.policy_path = gc.config['configuration']['policy_path'].lower()
-        else:
-            log.error('"policy_path" not specified, but is required when "rule_mode" is "policy".')
-
-    # are we processing SO rules?
-    if gc.config.has_option('configuration', 'process_so_rules'):
-        gc.process_so_rules = gc.config['configuration'].getboolean('process_so_rules')
-
-        if gc.config.has_option('configuration', 'sorule_path'):
-            gc.sorule_path = gc.config['configuration']['sorule_path']
-        else:
-            log.error('"sorule_path" is required when "process_so_rules" is set to "true".')
-
-    # get list of filenames to ignore in a ruleset
-    if gc.config.has_option('rulesets', 'ignore_files'):
-        r = gc.config['rulesets']['ignore_files']
-        if r:
-            gc.ignore_rules_files = [x.strip() + '.rules' for x in r.split(',')]
-
-    # where to write the blockfile
-    # todo: this may not exist if not processing blocklists
-    gc.bocklist_outfile = gc.config['blocklist']['block_list_path']
-
-    # do we reload snort when done?
-    if gc.config.has_option('snort','pid_path'):
-        gc.pid_path = gc.config['snort']['pid_path']
-
-    log.debug("Exiting Function determine_configuration_options()")
-
-
 def print_operational_settings():
     '''
     Print all the operational settings after parsing (what we will do)
@@ -755,13 +597,13 @@ def print_operational_settings():
     log.verbose("After parsing the command line and configuration file, this is what I know:")
 
     # halt-on-error
-    if gc.halt_on_warn:
-        log.verbose('Program will terminate when encountering an error or warning.')
-    else:
+    if gc.args.ignore_warn:
         log.verbose('Warnings will not cause this program to terminate (damn the torpedos, full speed ahead!).')
+    else:
+        log.verbose('Program will terminate when encountering an error or warning.')
 
     # are we printing oinkcode?
-    if gc.print_oinkcode:
+    if gc.args.print_oinkcode:
         log.verbose('Oinkcode will NOT be obfuscated in the output (do not share your oinkcode).')
     else:
         log.verbose('Oinkcode will be obfuscated in the output (this is a good thing).')
@@ -769,7 +611,7 @@ def print_operational_settings():
     # Temp dir management
     log.verbose('Temporary working directory is: ' + gc.tempdir)
 
-    if gc.delete_tempdir:
+    if gc.delete_temp_path:
         log.verbose('Temporary working directory will be deleted at the end.')
     else:
         log.verbose('Temporary working directory will not be deleted at the end.')
@@ -792,27 +634,26 @@ def print_operational_settings():
         log.verbose('Rulesets will not be downloaded, they will be loaded from all files in local folder: ' + "\n\t" + gc.args.folder)
     else:
         log.verbose('Rulesets will be downloaded from: ')
-        if gc.config['rulesets'].getboolean('registered_ruleset'):
+        if gc.registered_ruleset:
             log.verbose("\tSnort Registered Ruleset")
-        if gc.config['rulesets'].getboolean('community_ruleset'):
+        if gc.community_ruleset:
             log.verbose("\tSnort Community Ruleset")
-        if gc.config['rulesets'].getboolean('LightSPD_ruleset'):
+        if gc.lightspd_ruleset:
             log.verbose("\tSnort LightSPD Ruleset")
 
     #   Rules
-    if gc.ignore_rules_files:
-        log.verbose('The following rules files will not be included in rulesets: ' + str(gc.ignore_rules_files))
+    if gc.ignore:
+        log.verbose('The following rules files will not be included in rulesets: ' + str(gc.ignore))
 
     log.verbose("Rule Output mode is: " + gc.rule_mode)
     if gc.rule_mode == 'policy':
         log.verbose('Policy file to write is: ' + gc.policy_path)
 
     # local rules files
-    for opt in gc.config.options('configuration'):
-        if opt.startswith('local_rules'):
-            log.verbose('Rules from Local rules file will be included: ' + gc.config['configuration'][opt])
+    for opt in gc.local_rules:
+        log.verbose('Rules from Local rules file will be included: ' + opt)
 
-    log.verbose("All Rules will be written to a single file: " + gc.config['configuration']['rule_path'])
+    log.verbose("All Rules will be written to a single file: " + gc.rule_path)
     if gc.include_disabled_rules:
         log.verbose("Disabled rules will be written to the rules file")
     else:
@@ -824,24 +665,21 @@ def print_operational_settings():
         log.verbose('the policy file written (to specify enabled rules) is: ' + gc.policy_path)
 
     # blocklists
-    if gc.config['blocklist'].getboolean('snort_blocklist'):
+    if gc.snort_blocklist:
         log.verbose("Snort blocklist will be downloaded")
-    if gc.config['blocklist'].getboolean('et_blocklist'):
+    if gc.et_blocklist:
         log.verbose("ET blocklist will be downloaded")
-    other_bl = False
-    for bl in gc.config.options('blocklist'):
-        if bl.startswith('blocklist_'):
-            log.verbose("Other blocklist will be downloaded: " + gc.config['blocklist'][bl])
-            other_bl = True
 
-    if not any([gc.config['blocklist'].getboolean('snort_blocklist'),
-                gc.config['blocklist'].getboolean('et_blocklist')]) and not other_bl:
+    for bl in gc.blocklist:
+        log.verbose("Other blocklist will be downloaded: " + bl)
+
+    if not any([gc.snort_blocklist, gc.et_blocklist, len(gc.blocklist)]):
         log.verbose("No Blocklists will be downloaded.")
     else:
-        log.verbose('Blocklist entries will be written to: ' + gc.config['blocklist']['block_list_path'])
+        log.verbose('Blocklist entries will be written to: ' + gc.blocklist_path)
 
     # reload snort
-    if gc.pid_path:
+    if gc.get('pid_path'):
         log.verbose('Snort will be reloaded with new configuration, Pid loaded from: ' + gc.pid_path)
     else:
         log.verbose('Snort will NOT be reloaded with new configuration.')
@@ -859,18 +697,18 @@ def determine_ruleset_urls():
 
     urls = []
 
-    if gc.config['rulesets'].getboolean('community_ruleset'):
+    if gc.community_ruleset:
         u = ('SNORT_COMMUNITY', RULESET_URL_SNORT_COMMUNITY)
         urls.append(u)
 
-    if gc.config['rulesets'].getboolean('registered_ruleset'):
+    if gc.registered_ruleset:
         r = RULESET_URL_SNORT_REGISTERED.replace('<OINKCODE>', gc.oinkcode)
         version = sub(r'[^a-zA-Z0-9]', '', gc.snort_version)  # version in URL is alphanumeric only
         r = r.replace('<VERSION>', version)
         u = ('SNORT_REGISTERED', r)
         urls.append(u)
 
-    if gc.config['rulesets'].getboolean('LightSPD_ruleset'):
+    if gc.lightspd_ruleset:
         r = RULESET_URL_SNORT_LIGHTSPD.replace('<OINKCODE>', gc.oinkcode)
         u = ('SNORT_LIGHTSPD', r)
         urls.append(u)
@@ -1007,7 +845,7 @@ def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
     rules_files = [f for f in scandir(rulefolder_path) if f.is_file() and
         f.name.endswith('.rules') and
         f.name != 'includes.rules' and
-        f.name not in gc.ignore_rules_files]
+        f.name not in gc.ignore]
 
     log.debug('Rules_files to process are: ')
     for r in rules_files:
@@ -1098,35 +936,30 @@ def load_local_rules():
 
     log.verbose("Loading local rules files.")
 
-    # we can have many local rules files, in the 'config' section named local_rules*
-    opts = gc.config.options('configuration')
-
     rules_to_return = []
 
-    for opt in opts:
-        if opt.startswith('local_rules'):
-            path = gc.config['configuration'][opt]
-            log.verbose('Processing local rules file: ' + path)
+    for path in gc.local_rules:
+        log.verbose('Processing local rules file: ' + path)
 
-            if isfile(path):
-                # todo error handling on fopen
-                with open(path, 'r') as f:
-                    rules = f.readlines()
-            else:
-                log.warning('Error, could not find local rulefile located at: ' + path)
+        if isfile(path):
+            # todo error handling on fopen
+            with open(path, 'r') as f:
+                rules = f.readlines()
+        else:
+            log.warning('Error, could not find local rulefile located at: ' + path)
 
-            for rule in rules:
-                s = is_rule(rule)
-                if s:
-                    rules_to_return.append({
-                        'uid':          opt,  # noqa
-                        'ruleset_type': None,
-                        'rule':         s['rule'],  # noqa
-                        'filename':     basename(path),  # noqa
-                        'source_type':  'local',  # noqa
-                        'fingerprint':  fingerprint_rule(rule.strip()),  # noqa
-                        'enabled':      s['enabled']  # noqa
-                    })
+        for rule in rules:
+            s = is_rule(rule)
+            if s:
+                rules_to_return.append({
+                    'uid':          opt,  # noqa
+                    'ruleset_type': None,
+                    'rule':         s['rule'],  # noqa
+                    'filename':     basename(path),  # noqa
+                    'source_type':  'local',  # noqa
+                    'fingerprint':  fingerprint_rule(rule.strip()),  # noqa
+                    'enabled':      s['enabled']  # noqa
+                })
 
     log.verbose('Returning ' + str(len(rules_to_return)) + ' rules from all local rules files.')
 
@@ -1141,17 +974,16 @@ def get_blocklist_urls():
     log.verbose("Identifying all blocklist URLs to download from.")
     urls = []   # array of strings
 
-    if gc.config['blocklist'].getboolean('snort_blocklist'):
+    if gc.snort_blocklist:
         log.verbose("- Will download Snort blocklist")
         urls.append(SNORT_BLOCKLIST_URL)
-    if gc.config['blocklist'].getboolean('et_blocklist'):
+    if gc.et_blocklist:
         urls.append(ET_BLOCKLIST_URL)
         log.verbose("- Will download ET blocklist")
 
-    for bl in gc.config.options('blocklist'):
-        if bl.startswith('blocklist_'):
-            log.verbose("- Will download Other blocklist: " + bl + ": " + str(gc.config['blocklist'][bl]))
-            urls.append(gc.config['blocklist'][bl])
+    for bl in gc.blocklist:
+        log.verbose(f"- Will download Other blocklist: {bl}")
+        urls.append(bl)
 
     log.verbose("Identified " + str(len(urls)) + " blocklist URLs to download.")
     return urls
@@ -1191,7 +1023,7 @@ def write_blocklists_to_file(bl):
         return
 
     # todo: try/catch error
-    with open(gc.bocklist_outfile, 'w') as f:
+    with open(gc.blocklist_path, 'w') as f:
         f.write(str(bl))
 
 
@@ -1221,7 +1053,7 @@ def write_rulesets_to_disk(rules, path):
         f.write("#  " + "\n")
         f.write("#  To Use this file: " + "\n")
         f.write("#  in your snort.lua, you need the following settings:" + "\n")
-        f.write("#  set ips.include = '" + gc.rules_outfile + "',\n")
+        f.write("#  set ips.include = '" + gc.rule_path + "',\n")
         if gc.rule_mode == 'policy':
             f.write("#  set detection.global_default_rule_state = false (this disables all rules by default)" + "\n")
             f.write("#  set ips.states = '" + gc.policy_path + "',\n")
@@ -1251,7 +1083,7 @@ def write_state_to_disk(state, path):
         f.write("#  To Use this file with your rules file:" + "\n")
         f.write("#  in your snort.lua, you need the following settings:" + "\n")
         f.write("#  set detection.global_default_rule_state = false (this disables all rules by default)" + "\n")
-        f.write("#  set ips.include = '" + gc.rules_outfile + "',\n")
+        f.write("#  set ips.include = '" + gc.rule_path + "',\n")
         f.write("#  set ips.states = '" + gc.policy_path + "',\n")
         f.write("#  " + "\n")
         f.write("#-------------------------------------------------------------------\n\n")
@@ -1313,7 +1145,7 @@ def print_environment(gc):
     log.debug('OS Path Separator is: ' + sep)
 
 
-def get_temp_directory(start_time):
+def get_temp_directory(temp_path, start_time):
     '''
     Create a temp directory
     '''
@@ -1322,20 +1154,14 @@ def get_temp_directory(start_time):
     #   use system temp dir
     log.debug('Determining what temporary directory path to use.')
 
-    log.debug("\tChecking if temp_path is specified in config file.")
-
-    if gc.config.has_option('configuration', 'temp_path'):
-        tmp = gc.config['configuration']['temp_path'] + sep + SCRIPT_NAME + '-' + start_time
-        log.debug("\ttemp_path is specified in config file. Will try using: " + tmp)
-    else:
-        tmp = gettempdir() + sep + SCRIPT_NAME + '-' + start_time
-        log.debug("\ttemp_path is not specified in config file. Will try using: " + tmp)
+    tmp = join(temp_path, SCRIPT_NAME + '-' + start_time)
+    log.debug("\tWill try using: " + tmp)
 
     log.debug("\tTrying to create new Temp working file: " + tmp)
     try:
         mkdir(tmp)
-        mkdir(tmp + sep + 'downloaded_rulesets')
-        mkdir(tmp + sep + 'extracted_rulesets')
+        mkdir(join(tmp, 'downloaded_rulesets'))
+        mkdir(join(tmp, 'extracted_rulesets'))
         if(gc.process_so_rules):
             mkdir(tmp + sep + 'so_rules')
     except OSError:
@@ -1346,26 +1172,20 @@ def get_temp_directory(start_time):
     return tmp
 
 
-def get_snort_version():
+def get_snort_version(snort_path=None):
     '''
     Determine the Version of Snort
     '''
 
-    log.debug("Determining Snort version from config file or from Snort binary.")
-    # first check the config file
-    if gc.config.has_option('snort', 'snort_version'):
-        log.debug("\tDetermining snort version from config file.")
-        v = gc.config['snort']['snort_version']
-        log.debug("\tsnort version number from config file is: " + v)
-        return v
+    log.debug("Determining Snort version from Snort binary.")
 
-    # otherwise check the binary. First determine where the binary resides
-    if gc.config.has_option('snort', 'snort_path'):
-        command = gc.config['snort']['snort_path'] + ' -V'
-        log.debug("\tTrying to determine snort version from binary specified in configuration at snort_path: " + command)
-    else:
-        command = "snort -V"  # the shell command
-        log.debug("\tTrying to determine snort version from binary on system path: " + command)
+    # Default to just "snort" if no path provided
+    snort_path = snort_path or 'snort'
+
+    # Run snort to attempt to find the version
+    command = f'{snort_path} -V'
+
+    log.debug(f'\tTrying to determine snort version using: {command}')
 
     # call the snort binary with -V flag
     try:
@@ -1380,9 +1200,11 @@ def get_snort_version():
 
     # parse stdout from snort binary to determine version number
     log.debug("\tOutput from Snort binary with -V flag is: \n" + str(output) + "\n")
-    x = search(r"Version [-\.\d\w]*", str(output))
-    log.verbose("\tsnort version number from executable is: " + x.group()[8:])
-    return x.group()[8:]
+    x = search(r"Version ([-\.\d\w]+)", str(output))
+    if not x:
+        log.error('Unable to grok version number from Snort output')
+    log.verbose("\tsnort version number from executable is: " + x[1])
+    return x[1]
 
 
 def get_distro():
@@ -1401,42 +1223,6 @@ def get_distro():
     # if not config file, try to determine from OS
     # todo:
     return None
-
-
-def get_policy():
-    '''
-    Determine the current ips policy
-    See: https://www.snort.org/faq/why-are-rules-commented-out-by-default
-    '''
-
-    log.debug("Determining policy from config file.")
-
-    valid_policies = ['none', 'connectivity', 'balanced', 'security', 'max-detect']
-
-    # check the config file
-    if gc.config.has_option('configuration', 'ips_policy'):
-        log.debug("\tDetermining policy from config file.")
-        policy = gc.config['configuration']['ips_policy'].lower()
-    else:
-        log.debug('No ips_policy found, defaulting to "connectivity"')
-        policy = 'connectivity'
-
-    if policy not in valid_policies:
-        log.error('Invalid ips_policy found: ' + policy)
-
-    log.debug('ips_policy is: ' + policy)
-
-    # convert policy to actual filename
-    if policy == 'connectivity':
-        return 'rulestates-connectivity-ips.states'
-    elif policy == 'balanced':
-        return 'rulestates-balanced-ips.states'
-    elif policy == 'security':
-        return 'rulestates-security-ips.states'
-    elif policy == 'max-detect':
-        return 'rulestates-max-detect-ips.states'
-    else:
-        return 'none'
 
 
 # *****************************************************************************
