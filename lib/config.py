@@ -97,28 +97,6 @@ class Config(object):
                     except ValueError:
                         pass
 
-                # TODO: Evaluate whether below handler is desired
-                # ~~~START~~~
-
-                # # If the key already exists, we'll turn the val into a list
-                # if key in self._config:
-
-                #     # Get the old value
-                #     old_val = self._config[key]
-
-                #     # If it's a list, append to it
-                #     if isinstance(old_val, list):
-                #         old_val.append(val)
-
-                #     # Otherwise create a new list with the vals
-                #     else:
-                #         old_val = [old_val, val]
-
-                #     # Replace val with the list
-                #     val = old_val
-
-                # ~~~END~~~
-
                 # Save the key-value pair to the config
                 self._config[key] = val
 
