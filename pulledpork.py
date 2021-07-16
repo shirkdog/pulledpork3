@@ -236,15 +236,15 @@ def main():
             # pol =  get_policy_from_file(rule_set[1] + sep + 'rules' + sep + gc.ips_policy )
 
             # process so rules
-            if gc.process_so_rules:
+            if gc.get('sorule_path'):
                 # copy files first to temp\so_rules folder (we'll copy them all at the end, this checks for dupes)
                 # todo: error handling
-                so_src_folder = rule_set[1] + sep + 'so_rules' + sep + 'precompiled' + sep + gc.distro + sep
+                so_src_folder = join(rule_set[1], 'so_rules', 'precompiled', gc.distro)
                 src_files = listdir(so_src_folder)
                 for file_name in src_files:
                     full_file_name = join(so_src_folder, file_name)
                     if isfile(full_file_name):
-                        copy(full_file_name, gc.tempdir + sep + 'so_rules' + sep)
+                        copy(full_file_name, join(gc.tempdir, 'so_rules'))
 
                 # get SO rule stubs
                 # todo: generate stubs if distro folder doesn't exist
@@ -290,7 +290,7 @@ def main():
             pol = []
 
             # the manifest.json file is only used (at this time) for processing .so rules
-            if gc.process_so_rules:
+            if gc.get('sorule_path'):
 
                 json_manifest_file = rule_set[1] + sep + 'lightspd' + sep + 'manifest.json'
 
@@ -483,7 +483,7 @@ def main():
     # copy .so rules from tempdir
     # todo: delete old rules
     if gc.get('sorule_path'):
-        so_src_folder = gc.tempdir + sep + 'so_rules' + sep
+        so_src_folder = join(gc.tempdir, 'so_rules')
         src_files = listdir(so_src_folder)
         for file_name in src_files:
             full_file_name = join(so_src_folder, file_name)
@@ -1165,8 +1165,8 @@ def get_temp_directory(temp_path, start_time):
         mkdir(tmp)
         mkdir(join(tmp, 'downloaded_rulesets'))
         mkdir(join(tmp, 'extracted_rulesets'))
-        if(gc.process_so_rules):
-            mkdir(tmp + sep + 'so_rules')
+        if(gc.get('sorule_path')):
+            mkdir(join(tmp, 'so_rules'))
     except OSError:
         log.error("Fatal Error: Creation of the temporary working directory %s failed" % tmp)
     else:
