@@ -951,11 +951,11 @@ def load_local_rules():
         else:
             log.warning('Error, could not find local rulefile located at: ' + path)
 
-        for rule in rules:
+        for i, rule in enumerate(rules):
             s = is_rule(rule)
             if s:
                 rules_to_return.append({
-                    'uid':          opt,  # noqa
+                    'uid':          f'local_rules_{i}',  # noqa
                     'ruleset_type': None,
                     'rule':         s['rule'],  # noqa
                     'filename':     basename(path),  # noqa
