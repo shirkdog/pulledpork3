@@ -430,8 +430,8 @@ def main():
     # -----------------------------------------------------------------------------
     # Download Blocklists
 
-    # Have a blocklist out file defined?
-    if gc.defined('blocklist_path'):
+    # Have a blocklist out file defined AND have a blocklist to download?
+    if gc.defined('blocklist_path') and any([gc.snort_blocklist, gc.et_blocklist, len(gc.blocklist_urls)]):
 
         # Prepare an empty blocklist
         log.info("Preparing to process blocklists.")
@@ -462,7 +462,16 @@ def main():
                 log.warning(f'Unable to download blocklist: {e}')
 
         # Compose the blocklist header and write the blocklist file
-        blocklist_header = f'# BLOCKLIST CREATED BY {SCRIPT_NAME.upper()} ON {gc.start_time}'
+        blocklist_header = f'#-------------------------------------------------------------------\n'
+        blocklist_header += f'# BLOCKLIST CREATED BY {SCRIPT_NAME.upper()} ON {gc.start_time}\n#\n'
+        blocklist_header += f'# To Use this file, in your snort.lua, you need the following settings:\n'
+        blocklist_header += f'# reputation = \n'
+        blocklist_header += f'# {{\n'
+        blocklist_header += f'#     blocklist = "{gc.blocklist_path}"\n'
+        blocklist_header += f'#     ...\n'
+        blocklist_header += f'# }}\n'
+        blocklist_header += f'#\n#-------------------------------------------------------------------\n\n'
+
         try:
             new_blocklist.write_file(gc.blocklist_path, blocklist_header)
         except Exception as e:

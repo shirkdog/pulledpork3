@@ -218,6 +218,10 @@ class Config(object):
         if any([self.snort_blocklist, self.et_blocklist, len(self.blocklist_urls)]) and not self.defined('blocklist_path'):
             log.error('One or more blocklists are enabled but `blocklist_path` is missing in configuration')
 
+        # have a blocklist target file, but no blocklists enabled?
+        if self.defined('blocklist_path') and not any([self.snort_blocklist, self.et_blocklist, len(self.blocklist_urls)]):
+            log.warning('`blocklist_path` is configurd but no blocklists have been specified for download')       
+
         # Do we need to ensure distro is set in config?
 
         log.debug('Exiting: Config.validate()')
