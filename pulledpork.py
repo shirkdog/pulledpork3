@@ -88,10 +88,12 @@ def main():
     # if the -V flag (version) was passed: Print the script Version and Exit
     if gc.args.version:
         print(VERSION_STR)
+        flying_pig_banner()
         exit(0)
 
-    # Always show pigs flying as the preamble, regardless of verbosity
-    flying_pig_banner()
+    # Always show pigs flying as the preamble, unless running in quiet mode
+    if not gc.args.quiet:
+        flying_pig_banner()
 
     # Setup logging as requested
     #   NOTE: For now all the args are permitted, but specifying more than one
@@ -104,7 +106,7 @@ def main():
     if gc.args.debug:
         log.level = logger.Levels.DEBUG
 
-    # Print the env
+    # Print the env (will only print if verbose or debug)
     print_environment(gc)
 
     # Also setup halt on warn as requested
