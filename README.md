@@ -88,11 +88,11 @@ PP3 curently supports downloading three rulesets from Snort/Talos: the *communit
 
 This section identifies which blocklists (lists of malicious IP addresses) to download. Set the ones you want to 'true'.  You need to specify the location to write the combined blocklist file (all downloaded blocklists will be combined into a single file).  For example:
 ```
-block_list_path=/usr/local/etc/snort/rules/iplists/default.blocklist
+blocklist_path=/usr/local/etc/snort/rules/iplists/default.blocklist
 ```
 or:
 ```
-block_list_path=c:\snort\blocklist.txt
+blocklist_path=c:\snort\blocklist.txt
 ```
 
 If you have other additional blocklists you want to download: You can use the *blocklist_urls* option, uncomment it (remove the hash symbol from the front of the line) and include those blocklist(s), seperated by commas. For example:
@@ -124,7 +124,7 @@ the `local_rules` option lets you add your own rules files to the output, and yo
 
 If you're using the policy mode: then all local rules will be added in the snort.rules file, but will be enabled/disabled with entries the policy file (if the rule is disabled in your local.rules file, then it will be included in the snort.rules file without a hash mark, but will be disabled with an entry in the policy file).
 
-the `ignore` option specifies which rule files should not be processed from the downloaded rulsets. The recomended default is `includes.rules, snort3-deleted.rules`, because those rules are not needed.
+the `ignored_files` option specifies which rule files should not be processed from the downloaded rulsets. The recomended default is `includes.rules, snort3-deleted.rules`, because those rules are not needed. Note that this setting also supports the old name `ignore` from the Perl PulledPork config.
 
 ## SO rules
 SO rules are rules that are pre-compiled by Snort/Talos for a subset of platforms.  You specify the path where these compiled rule files should be written with the `sorule_path` option.  These rules are compiled for a specific set of platforms, and if your platform is supported, specify it with the `distro` option.  If your distro is not supported, comment this line out (in future releases, these so rules will be compiled manually for unsupported distros).

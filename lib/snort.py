@@ -18,7 +18,7 @@ log = logger.Logger()
 ################################################################################
 
 # Rule regex patterns
-RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.+\(.+sid:(\d+);.+\))\s*$')
+RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.*\(.+sid:(\d+);.+\))\s*$')
 RULE_GID_REGEX = re.compile(r'gid:(\d+);')
 RULE_REV_REGEX = re.compile(r'rev:(\d+);')
 POLICY_RULE_REGEX = re.compile(r'^(\w+) \(gid:(\d+?); sid:(\d+?); (\w+);\)$')
@@ -390,7 +390,7 @@ class Rules(object):
 
         # Setup the rules cache and save the metadata
         self._all_rules = {}
-        self._metadata = metadata
+        self.metadata = metadata
 
         # No rules to process?
         if rules_path is None:
@@ -469,9 +469,8 @@ class Rules(object):
         elif isinstance(rule, Rule):
             return rule.rule_id in self._all_rules
 
-        # Wut?
-        else:
-            raise ValueError(f'Not a recognized rule: {rule}')
+        # Otherwise just return False
+        return False
 
     def __iter__(self):
         '''
@@ -549,7 +548,7 @@ class Rules(object):
         '''
 
         # We'll use a copy
-        metadata = self._metadata.copy()
+        metadata = self.metadata.copy()
 
         # Work through the policy file
         with open(rules_file, 'r') as fh:
@@ -642,7 +641,7 @@ class Rules(object):
         new_rules = Rules()
 
         # Copy the metadata over
-        new_rules._metadata = self._metadata.copy()
+        new_rules.metadata = self.metadata.copy()
 
         # Copy over the rules cache
         for rule_id, rule in self._all_rules.items():
@@ -826,6 +825,32 @@ class Rules(object):
             # Save the rule to cache
             self._all_rules[new_rule.rule_id] = new_rule
 
+    def policy_from_state(self, name='rules-state'):
+        '''
+        Return a Policy object based on the state of the rules
+
+        Example:
+        >>> txt = Rules('../rules')
+        >>> txt
+        Rules(loaded:41987, enabled:41987, disabled:0)
+        >>>
+        >>> pol = txt.policy_from_state()
+        >>> pol
+        Policy(name:rules-state, rules:41987)
+        '''
+
+        # Setup the new policy
+        new_policy = Policy(name)
+
+        # Work through the rules
+        for rule in self._all_rules.values():
+
+            # Update the policy with the rule state
+            new_policy.update_rule(rule.gid, rule.sid, rule.action, rule.state)
+
+        # Return the policy
+        return new_policy
+
 
 ################################################################################
 # Policy - A Rule policy
@@ -892,9 +917,32 @@ class Policy(object):
         elif isinstance(rule, Rule):
             return rule.rule_id in self.rules
 
-        # Wut?
-        else:
-            raise ValueError(f'Not a recognized rule: {rule}')
+        # Otherwise just return False
+        return False
+
+    def update_rule(self, gid, sid, action='alert', state=True):
+        '''
+        Update, or add, a rule in this policy
+
+        Example:
+        >>> pol = Policy('custom')
+        >>> pol
+        Policy(name:custom, rules:0)
+        >>> pol.update_rule(1, 2000)
+        >>> pol
+        Policy(name:custom, rules:1)
+        '''
+
+        # Compose the rule ID
+        rule_id = f'{gid}:{sid}'
+
+        # Save the rule to the dict
+        self.rules[rule_id] = {
+            'gid': gid,
+            'sid': sid,
+            'action': action,
+            'state': state
+        }
 
     def load_file(self, policy_file):
         '''
@@ -921,7 +969,7 @@ class Policy(object):
                     continue
 
                 # Not what we expected for a policy rule?
-                if 'sid:' not in line:
+                if 'gid:' not in line and 'sid:' not in line:
                     continue
 
                 # Use regex to parse the bits
@@ -935,18 +983,10 @@ class Policy(object):
                 gid = rule_parts[2]
                 sid = rule_parts[3]
                 action = rule_parts[1]
-                state = rule_parts[4] == 'enable'
+                state = rule_parts[4] == 'enable'  # This should always be true
 
-                # Compose the rule ID
-                rule_id = f'{gid}:{sid}'
-
-                # Save the rule to the dict
-                self.rules[rule_id] = {
-                    'gid': gid,
-                    'sid': sid,
-                    'action': action,
-                    'state': state
-                }
+                # Save the rule
+                self.update_rule(gid, sid, action, state)
 
     def copy(self):
         '''
@@ -1007,24 +1047,19 @@ class Policy(object):
             if header is not None:
                 fh.write(f'{header}\n')
 
-            # Work through all the policies
-            for _,v in self.rules.items():
-                action = v['action']
-                gid = v['gid']
-                sid = v['sid']
-                if v['state']:
-                    state = 'enable'
-                else:
-                    pass
-                    # not sure if 'disabled' is allowed or whatother options are possible
+            # Work through all the rules in the policy
+            for rule in self.rules.values():
 
-                fh.write(f'{action} (gid:{gid}; sid:{sid}; {state})\n')
+                # Only enabled rules should be written to the file
+                if not rule['state']:
+                    continue
 
-
+                # Write the policy line
+                fh.write(f'{rule["action"]} (gid:{rule["gid"]}; sid:{rule["sid"]}; enable)\n')
 
 
 ################################################################################
-# Policy - A collection of Policy objects
+# Policies - A collection of Policy objects
 ################################################################################
 
 class Policies(object):

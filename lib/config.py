@@ -122,6 +122,15 @@ class Config(object):
 
         log.debug('Entering: Config.validate()')
 
+        # Helper to cleanup and de-dupe list settings
+        def list_from_str(some_str):
+            out_list = []
+            for thing in some_str.split(','):
+                thing = thing.strip()
+                if thing and thing not in out_list:
+                    out_list.append(thing)
+            return thing
+
         # Non-critical checks
 
         # Setup the temp path if not set (not a failure)
@@ -133,21 +142,27 @@ class Config(object):
         if not self.defined('local_rules'):
             self.local_rules = []
         else:
-            self.local_rules = [url.strip() for url in self.local_rules.split(',')]
+            self.local_rules = list_from_str(self.local_rules)
 
         # If ignored files is not set, default to empty list
         # Otherwise create a list from the value
-        if not self.defined('ignore'):
-            self.ignore = []
-        else:
-            self.ignore = [file.strip() for file in self.ignore.split(',')]
+        # NOTE: Also rename this from the config "ignore" to "ignored_files"
+        #   (backward-compatible setting name from Perl PulledPork config)
+        # If both settings exist, combine, de-dupe, and move to just "ignored_files"
+        ignored_files = []
+        if self.defined('ignore'):
+            ignored_files += list_from_str(self.ignore)
+            _ = self._config.pop('ignore')
+        if self.defined('ignored_files'):
+            ignored_files += list_from_str(self.ignored_files)
+        self.ignored_files = list(set(ignored_files))
 
         # If additional blocklists are not set, default to empty list
         # Otherwise create a list from the value
         if not self.defined('blocklist_urls'):
             self.blocklist_urls = []
         else:
-            self.blocklist_urls = [url.strip() for url in self.blocklist_urls.split(',')]
+            self.blocklist_urls = list_from_str(self.blocklist_urls)
 
         # Critical checks below
 
