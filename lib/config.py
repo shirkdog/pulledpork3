@@ -106,12 +106,15 @@ class Config(object):
                 # Save the key-value pair to the config
                 self._config[key] = val
 
-        # Debug log the config
-        log.debug(f'After loading configuration from: {config_file}')
+        log.debug(f'Exiting: Config.load({config_file})')
+
+    def log_config(self):
+        '''
+        Log the current config
+        '''
+        log.debug('Current configuration:')
         for key, val in self.items():
             log.debug(f'  Key: {key}\tValue: {val}')
-
-        log.debug(f'Exiting: Config.load({config_file})')
 
     def validate(self):
         '''
