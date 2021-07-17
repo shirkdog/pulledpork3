@@ -971,7 +971,7 @@ class Policy(object):
                     continue
 
                 # Not what we expected for a policy rule?
-                if 'sid:' not in line:
+                if 'gid' not in line and 'sid:' not in line:
                     continue
 
                 # Use regex to parse the bits
@@ -985,7 +985,7 @@ class Policy(object):
                 gid = rule_parts[2]
                 sid = rule_parts[3]
                 action = rule_parts[1]
-                state = rule_parts[4] == 'enable'
+                state = rule_parts[4] == 'enable'  # This should always be true
 
                 # Save the rule
                 self.update_rule(gid, sid, action, state)
@@ -1052,8 +1052,7 @@ class Policy(object):
             # Work through all the rules in the policy
             for rule in self.rules.values():
 
-                # TODO: not sure if 'disabled' is allowed or whatother options are possible
-                # For now, skip
+                # Only enabled rules should be written to the file
                 if not rule['state']:
                     continue
 
