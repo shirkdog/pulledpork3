@@ -469,9 +469,8 @@ class Rules(object):
         elif isinstance(rule, Rule):
             return rule.rule_id in self._all_rules
 
-        # Wut?
-        else:
-            raise ValueError(f'Not a recognized rule: {rule}')
+        # Otherwise just return False
+        return False
 
     def __iter__(self):
         '''
@@ -918,9 +917,8 @@ class Policy(object):
         elif isinstance(rule, Rule):
             return rule.rule_id in self.rules
 
-        # Wut?
-        else:
-            raise ValueError(f'Not a recognized rule: {rule}')
+        # Otherwise just return False
+        return False
 
     def update_rule(self, gid, sid, action='alert', state=True):
         '''
@@ -971,7 +969,7 @@ class Policy(object):
                     continue
 
                 # Not what we expected for a policy rule?
-                if 'gid' not in line and 'sid:' not in line:
+                if 'gid:' not in line and 'sid:' not in line:
                     continue
 
                 # Use regex to parse the bits
