@@ -187,8 +187,8 @@ class Config(object):
         if num_enabled_rulesets > 1:
             log.warning('More than one official ruleset is selected; not recommended since there is a lot of overlap')
 
-        # Increment the enabled count if we have local rules
-        if len(self.local_rules):
+        # Increment the enabled count if we have local rules enabled
+        if self.defined('local_rules'):
             num_enabled_rulesets += 1
 
         # No rulesets enabled?
