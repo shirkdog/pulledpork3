@@ -144,12 +144,6 @@ class Rule(object):
 
 class Rules(object):
 
-    # The files we'll always ignore
-    IGNORED_FILES = [
-        'includes.rules',
-        'snort3-deleted.rules'
-    ]
-
     def __init__(self, rules_path=None, ignored_files=[], **metadata):
         '''
         Load all the rule files from the given rules path, except those
@@ -177,8 +171,6 @@ class Rules(object):
 
                 # Check for rules files, and those we don't want
                 if not rules_file.name.endswith('.rules'):
-                    continue
-                if rules_file.name in self.IGNORED_FILES:
                     continue
                 if rules_file.name in ignored_files:
                     continue
@@ -268,7 +260,7 @@ class Rules(object):
         ...     rule
         ...     break
         ...
-        Rule(rule_id:1:24511, state:ENABLED)
+        Rule(rule_id:1:24511, action:alert, state:ENABLED)
         '''
         next_rule = self._iter.__next__()
         return next_rule
@@ -283,7 +275,7 @@ class Rules(object):
         Rules(loaded:41987, enabled:41987, disabled:0)
         >>>
         >>> txt['1:10018']
-        Rule(rule_id:1:10018, state:ENABLED)
+        Rule(rule_id:1:10018, action:alert, state:ENABLED)
         '''
         rule = self._all_rules[rule_id]
         return rule
@@ -300,7 +292,7 @@ class Rules(object):
         >>> txt.get('1:1', 'nope')
         'nope'
         >>> txt.get('1:10018')
-        Rule(rule_id:1:10018, state:ENABLED)
+        Rule(rule_id:1:10018, action:alert, state:ENABLED)
         '''
 
         # Get the rule
@@ -350,18 +342,23 @@ class Rules(object):
 
                 # Attempt to parse the line as a rule
                 try:
-                    rule = Rule(line, **metadata)
+                    new_rule = Rule(line, **metadata)
                 except ValueError as e:
                     log.verbose(f'{rules_file}:{line_num} - {e}')
                     continue
 
-                # Already exists?
-                if rule.rule_id in self._all_rules:
-                    log.debug(f'{rules_file}:{line_num} - {rule.rule_id} already exists; overwriting')
+                # If the rule is already present, we want to keep
+                # the one with the higher rev
+                if new_rule.rule_id in self._all_rules:
+                    current_rule = self[new_rule.rule_id]
+
+                    # If the current rule has a later or same rev, move on
+                    if current_rule.rev >= new_rule.rev:
+                        log.verbose(f'{rules_file}:{line_num} - Duplicate rule_id with same/earlier rev; skipping')
+                        continue
 
                 # Save the rule to cache
-                # Add/remove from the disabled index as required
-                self._all_rules[rule.rule_id] = rule
+                self._all_rules[new_rule.rule_id] = new_rule
 
     def write_file(self, rules_file, include_disabled=False, header=None):
         '''
@@ -582,8 +579,21 @@ class Rules(object):
         if not isinstance(other_rules, Rules):
             raise ValueError(f'Not a recognized Rules object: {other_rules}')
 
-        # Update the rules
-        self._all_rules.update(other_rules._all_rules)
+        # Work through the rules
+        for new_rule in other_rules:
+
+            # If the rule is already present, we want to keep
+            # the one with the higher rev
+            if new_rule.rule_id in self._all_rules:
+                current_rule = self[new_rule.rule_id]
+
+                # If the current rule has a later or same rev, move on
+                if current_rule.rev >= new_rule.rev:
+                    log.verbose('Duplicate rule_id with same/earlier rev; skipping')
+                    continue
+
+            # Save the rule to cache
+            self._all_rules[new_rule.rule_id] = new_rule
 
 
 ################################################################################
