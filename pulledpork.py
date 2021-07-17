@@ -991,67 +991,6 @@ def load_local_rules():
     return rules_to_return
 
 
-def get_blocklist_urls():
-    '''
-    Identify all blocklist URLs to download
-    '''
-
-    log.verbose("Identifying all blocklist URLs to download from.")
-    urls = []   # array of strings
-
-    if gc.snort_blocklist:
-        log.verbose("- Will download Snort blocklist")
-        urls.append(SNORT_BLOCKLIST_URL)
-    if gc.et_blocklist:
-        urls.append(ET_BLOCKLIST_URL)
-        log.verbose("- Will download ET blocklist")
-
-    for bl in gc.blocklist_urls:
-        log.verbose(f"- Will download Other blocklist: {bl}")
-        urls.append(bl)
-
-    log.verbose("Identified " + str(len(urls)) + " blocklist URLs to download.")
-    return urls
-
-
-def get_blocklists(start_time, urls):
-    '''
-    Get blocklist entries from URLs
-    '''
-
-    log.verbose("Downloading " + str(len(urls)) + " blocklists.")
-    if not urls:
-        return ''
-
-    blocklist = "# BLOCKLIST CREATED BY " + SCRIPT_NAME.upper() + " ON " + start_time + "\n\n"  # array of strings, content of blocklists
-
-    for url in urls:
-        log.verbose("- Downloading " + url)
-        # todo: error check
-        try:
-            r = requests.get(url)
-        except Exception as e:
-            log.warning('* Error downloading URL: ' + str(e))
-
-        blocklist += "# " + SCRIPT_NAME + " - The follwing entries downloaded from: " + url + "\n\n" + r.text + "\n\n\n"
-
-    return blocklist
-
-
-def write_blocklists_to_file(bl):
-    '''
-    Write blocklist URLs to disk
-    '''
-
-    if not bl:
-        log.verbose("No Blocklist entries to write to disk.")
-        return
-
-    # todo: try/catch error
-    with open(gc.blocklist_path, 'w') as f:
-        f.write(str(bl))
-
-
 def write_rulesets_to_disk(rules, path):
     '''
     write the rulesets to a file (array of strings)
