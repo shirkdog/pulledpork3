@@ -248,9 +248,8 @@ class Blocklist(object):
             if header is not None:
                 fh.write(f'{header}\n')
 
-            # Write all of theblocklist lines
-            for line in self._lines:
-                fh.write(f'{line}\n')
+            # Write all of theb locklist lines
+            fh.write('\n'.join(self._lines))
 
 
 ################################################################################
