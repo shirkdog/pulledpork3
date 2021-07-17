@@ -995,6 +995,33 @@ class Policy(object):
         # Update the rules in this policy from the other
         self.rules.update(other_policy.rules)
 
+    def write_file(self, policy_file, header=None):
+        '''
+        Write a single policy to a states file
+        '''
+
+        # Open the file for writing
+        with open(policy_file, 'w') as fh:
+
+            # Write a file header?
+            if header is not None:
+                fh.write(f'{header}\n')
+
+            # Work through all the policies
+            for _,v in self.rules.items():
+                action = v['action']
+                gid = v['gid']
+                sid = v['sid']
+                if v['state']:
+                    state = 'enable'
+                else:
+                    pass
+                    # not sure if 'disabled' is allowed or whatother options are possible
+
+                fh.write(f'{action} (gid:{gid}; sid:{sid}; {state})\n')
+
+
+
 
 ################################################################################
 # Policy - A collection of Policy objects

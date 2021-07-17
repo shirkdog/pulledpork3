@@ -41,7 +41,7 @@ import requests
 
 # Our PulledPork3 internal libraries
 from lib import config, logger
-from lib.snort import Blocklist
+from lib.snort import Blocklist, Rules, Policies
 
 
 # -----------------------------------------------------------------------------
@@ -139,9 +139,6 @@ def main():
     gc.tempdir = get_temp_directory(gc.temp_path, gc.start_time)
     log.verbose("Temporary working directory is: " + gc.tempdir)
 
-    # Get the policy file from name (for now)
-    gc.ips_policy = get_policy(gc.ips_policy)
-
     # Are we missing the Snort version in config?
     if not gc.defined('snort_version'):
         gc.snort_version = get_snort_version(gc.get('snort_path'))
@@ -200,8 +197,8 @@ def main():
     # the ID is a known entity (SNORT_COMMUNITY..., or the identifier from the config file for the url)
     # this ID is used later for post-rule processing.
 
-    all_rules = []               # list of all text rules found, each entry is a rule (dict)
-    # other_policies = []         # todo: if policies_path is set (write other policies files)
+    all_new_rules = Rules()
+    all_new_policies = Policies() 
 
     for rule_set in extracted_rulesets:
         log.debug('---------------------------------')
@@ -210,35 +207,38 @@ def main():
         # determine ruleset type:
         if rule_set[0] == 'SNORT_COMMUNITY':
             # only simple rules to worry about
-            r = get_text_rules_from_folder(rule_set[1], 'SNORT_COMMUNITY', rule_set[0], 'text')
+            # community rules have an extra folder to delve into
+            rule_path = rule_set[1] + sep + 'snort3-community-rules'
 
-            # We need to create policies regardless of output
-            for rule in r:
-                s = is_rule(rule['rule'])
-                if s:
-                    rule['enabled'] = s['enabled']
-                    rule['rule'] = s['rule']
+            # todo: wrap next line in try/catch
+            community_rules = Rules(rule_path, gc.ignore)
+            log.verbose(f'\tLoaded community rules: {str(community_rules)}')
+            all_new_rules.extend(community_rules)
 
-            all_rules.extend(r)
-            log.verbose(str(len(r)) + ' actual rules found in Community ruleset')
+            # ? how to create a policy file from these rules?
+            # all_new_policies.extend(???)
 
         elif rule_set[0] == 'SNORT_REGISTERED':
 
             # process text rules
             text_rules_path = str(rule_set[1] + sep + 'rules')
-            rules = get_text_rules_from_folder(text_rules_path, 'SNORT_REGISTERED', 'snort_ruleset', 'text')
-            pol = get_policy_from_file(text_rules_path + sep + gc.ips_policy)
+            registered_rules = Rules(text_rules_path, gc.ignore)
+            registered_policies = Policies(text_rules_path)
+
+            log.verbose(f'* Text Rules processed from Registered ruleset: {str(registered_rules)}')
+            log.verbose(f'* Text Policies processed from Registered ruleset: {str(registered_policies)}')
 
             # process builtin rules
             builtin_rules_path = str(rule_set[1] + sep + 'builtins')
-            r = get_text_rules_from_folder(builtin_rules_path, 'SNORT_REGISTERED', 'snort_ruleset', 'builtin')
-            rules.extend(r)
-            p = get_policy_from_file(builtin_rules_path + sep + gc.ips_policy)
-            pol.extend(p)
 
-            # process policies
-            # we need policies even if we're in simple mode
-            # pol =  get_policy_from_file(rule_set[1] + sep + 'rules' + sep + gc.ips_policy )
+            builtin_rules = Rules(builtin_rules_path)
+            builtin_policies = Policies(builtin_rules_path)
+
+            log.verbose(f'* Builtin Rules processed from Registered ruleset: {str(builtin_rules)}')
+            log.verbose(f'* Builtin Policies processed from Registered ruleset: {str(builtin_policies)}')
+
+            registered_rules.extend(builtin_rules)
+            registered_policies.extend(builtin_policies)
 
             # process so rules
             if gc.get('sorule_path'):
@@ -254,45 +254,33 @@ def main():
                 # get SO rule stubs
                 # todo: generate stubs if distro folder doesn't exist
                 so_rules_path = str(rule_set[1] + sep + 'so_rules')
-                r = get_text_rules_from_folder(so_rules_path, 'SNORT_REGISTERED', 'snort_ruleset', 'so')
-                rules.extend(r)
 
-                # Get So rule policies
-                p = get_policy_from_file(rule_set[1] + sep + 'so_rules' + sep + gc.ips_policy)
-                pol.extend(p)
+                so_rules = Rules(so_rules_path)
+                so_policies = Policies(so_rules_path)
 
-            # we need to use the policy (.states) file to mark rules as enabled/disabled
+                log.verbose(f'* SO Rules processed from Registered ruleset: {str(so_rules)}')
+                log.verbose(f'* SO Policies processed from Registered ruleset: {str(so_policies)}')
 
-            # create list of fingerprints for all enabled policies
-            enabled_rule_policies = []
-            for state in pol:
-                gid = search(r'gid:(\d+);', state)
-                sid = search(r'sid:(\d+);', state)
-                action = search(r'; enable;\)$', state)
+                registered_rules.extend(so_rules)
+                registered_policies.extend(so_policies)
 
-                if sid and gid and action:
-                    gid = gid.group(1)
-                    sid = sid.group(1)
-                    # this is a valid enable policy
-                    # any rules matching this policy entry should be enabled
-                    enabled_rule_policies.append(gid + ':' + sid + ':')
+            log.verbose(f'* Rules processed from Registered ruleset: {str(registered_rules)}')
+            log.verbose(f'* Policies processed from Registered ruleset: {str(registered_policies)}')
 
-            for r in rules:
-                if r['fingerprint']:
-                    # fingerprints are slightly different between policy file and rule file (policy has no REV)
-                    fgr = search(r'^(\d+:\d+:)\d$', r['fingerprint'])
+            log.verbose(f'Preparing to apply policy {gc.ips_policy} to Registered rules')
+            log.verbose (f' - Registered rules before policy application:  {str(registered_rules)}')
 
-                    if fgr and fgr.group(1) in enabled_rule_policies:
-                        r['enabled'] = True
-                    else:
-                        r['enabled'] = False
+            # apply the policy to these rules
+            registered_rules.apply_policy(registered_policies[gc.ips_policy])  
+            log.verbose (f' - Registered rules after policy application:  {str(registered_rules)}')
 
-            all_rules.extend(rules)
+            all_new_rules.extend(registered_rules)
+            all_new_policies.extend(registered_policies)
 
         elif rule_set[0] == 'SNORT_LIGHTSPD':
 
-            rules = []
-            pol = []
+            lightspd_rules = Rules()
+            lightspd_policies = Policies()
 
             # the manifest.json file is only used (at this time) for processing .so rules
             if gc.get('sorule_path'):
@@ -345,146 +333,87 @@ def main():
                     # get SO rule stub files
                     # todo: generate stubs if distro folder doesn't exist
                     so_rules_path = rule_set[1] + 'lightspd' + sep + 'modules' + sep + 'stubs' + sep
-                    r = get_text_rules_from_folder(so_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'so')
-                    rules.extend(r)
+                    #r = get_text_rules_from_folder(so_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'so')
+                    #rules.extend(r)
+                    lightspd_rules = Rules(so_rules_path)
+                    lightspd_policies = Policies(so_rules_path)
 
-                    # Get So rule policies
-                    p = get_policy_from_file(so_rules_path + sep + gc.ips_policy)
-                    pol.extend(p)
-
-                log.debug("Completed loading lightSPD Ruleset .so rules. " + str(len(r)) + ' rules found')
-
+                log.verbose(f'* SO Rules processed from LightSPD ruleset: {str(lightspd_rules)}')
+                log.verbose(f'* SO Policies processed from LightSPD ruleset: {str(lightspd_policies)}')
+    
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
             # this should hopefully be changed to an explicit entry in the manifest.json file
-
             text_rules_path = rule_set[1] + sep + 'lightspd' + sep + 'rules' + sep + '3.0.0.0' + sep
 
-            r = get_text_rules_from_folder(text_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'text')
-            p = get_policy_from_file(text_rules_path + sep + gc.ips_policy)
+            lightspd_text_rules = Rules(text_rules_path,gc.ignore)
+            lightspd_text_policies = Policies(text_rules_path)
 
-            log.debug("Completed loading lightSPD Ruleset text rules. " + str(len(r)) + ' rules found')
-            rules.extend(r)
-            pol.extend(p)
+            log.verbose(f'* text Rules processed from LightSPD ruleset: {str(lightspd_text_rules)}')
+            log.verbose(f'* text Policies processed from LightSPD ruleset: {str(lightspd_text_policies)}')
+
+            lightspd_rules.extend(lightspd_text_rules)
+            lightspd_policies.extend(lightspd_text_policies)
 
             # LOAD BULTIN RULES FROM LightSPD archive
             # right now, the LightSPD folder has a single 3.0.1-3 folder in it, so let's use that explictly
             # hopefully this will be changed to an explicit entry in the manifest.json file
             builtin_rules_path = str(rule_set[1] + sep + 'lightspd' + sep + 'builtins' + sep + '3.0.0-264')
-            r = get_text_rules_from_folder(builtin_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'builtin')
-            p = get_policy_from_file(builtin_rules_path + sep + gc.ips_policy)
+            lightspd_builtin_rules = Rules(builtin_rules_path, gc.ignore)
+            lightspd_builtin_policies = Policies(builtin_rules_path)
 
-            log.debug("Completed loading lightSPD Ruleset builtin rules. " + str(len(r)) + ' rules found')
-            rules.extend(r)
-            pol.extend(p)
+            log.verbose(f'* builtin Rules processed from LightSPD ruleset: {str(lightspd_builtin_rules)}')
+            log.verbose(f'* builtin Policies processed from LightSPD ruleset: {str(lightspd_builtin_policies)}')
 
-            # due to the way lightSPD uses .states files (policies) to enable and disabled individual rules, we need to
-            # determine which rules are enabled and disabled by checking the GID:SID for each rule against all the
-            # entries in the policy file. We fingerprint each rule (GID:SID) and compare it against all the policys listed.
-            # the state (enabled/disabled) is written as another entry in each rules dictionary (the 'enabled' entry).
-            # create fingerprints of rules
-            enabled_rule_policies = []
-            for state in pol:
-                gid = search(r'gid:(\d+);', state)
-                sid = search(r'sid:(\d+);', state)
-                action = search(r'; enable;\)$', state)
+            lightspd_rules.extend(lightspd_builtin_rules)
+            lightspd_policies.extend(lightspd_builtin_policies)
 
-                if sid and gid and action:
-                    gid = gid.group(1)
-                    sid = sid.group(1)
-                    # this is a valid enable policy
-                    # any rules matching this policy entry should be enabled
-                    enabled_rule_policies.append(gid + ':' + sid + ':')
+            log.verbose(f'Preparing to apply policy {gc.ips_policy} to LightSPD rules')
+            log.verbose (f' - LightSPD rules before policy application:  {str(lightspd_rules)}')
 
-            # Mark rule object (enabled dict entry) as enabled or disabled based on the policy file
-            for r in rules:
-                if r['fingerprint']:
-                    # fingerprints are slightly different between policy file and rule file (policy has no REV)
-                    fgr = search(r'^(\d+:\d+:)\d$', r['fingerprint'])
+            # apply the policy to these rules
+            lightspd_rules.apply_policy(lightspd_policies[gc.ips_policy])  
+            log.verbose (f' - LightSPD rules after policy application:  {str(lightspd_rules)}')
 
-                    if fgr and fgr.group(1) in enabled_rule_policies:
-                        r['enabled'] = True
-                    else:
-                        r['enabled'] = False
-
-            # last step for LightSPD rules, save back with all the other rules
-            all_rules.extend(rules)
+            all_new_rules.extend(lightspd_rules)
+            all_new_policies.extend(lightspd_policies)  
 
         else:
             log.warning("Unknown ruleset archive folder recieved.")
             # TODO: non-standard ruleset, we need to figure it out
 
-    # all_rules = [] # list of rule_dicts. each entry is a individual rule with associated metadata.
-    #  rule_dict = {
-    #       uid            =  Unique Identifier (from the conf file)
-    #       ruleset_type   =  the format of ruleset, MUST be: (snort_lightspd, snort_community, snort_ruleset, other)
-    #       rule           =  the actual rule, in text format (alert any any....), no comments
-    #       filename       =  the filename where the rule came from ('server-iss.rules' for example)
-    #       source_type    =  the source of the rule, MUST be: (text, builtin, so, local)
-    #       enabled         = boolean - if the rule is enabled based on policy (registered) or commented out (community)
-    #  }
+    log.info(f'Competed processing all rulesets')
+    log.info(f'* Total Rules: {str(all_new_rules)}')
 
-    log.debug("There are " + str(len(all_rules)) + ' rules after downloading and processing all rulesets.')
+    for path in gc.local_rules:
+        local_rules = Rules(path)
+        log.info(f'loaded local rules file: {str(local_rules)} from {path}')
+        all_new_rules.extend(local_rules)
 
-    # load any local.rules and add to rules list
-    local_rules = load_local_rules()
-
-    all_rules.extend(local_rules)
-    log.debug("There are " + str(len(all_rules)) + ' rules after loading local rules files.')
-
-    # modify rules based on LARK (todo)
-    # Convert rules from string to dict (todo: can we keep this as a parse tree and work on it?)
-    '''
-    rules = objectify_rules(rules)
-    log.debug("There are " + str(len(rules)) + ' rules (dict) after converting rule strings to dicts.' )
-
-    -----------------------------------------------------------------------------
-    Post-process rules (todo) -> create DSL and parse this way
-    de-dupe rules(? is this needed)
-    enable/disable rules
-    modify rules
-    flowbit fixing
-
-    test example: enable ALL Rules.
-    this is how i'll apply a DSL to the rules for enable/disable (or operate on parse tree)
-    for rule in rules:
-       rule['enabled'] = True
-    log.debug("We have " + str(len(rules)) + ' enabled rule objects.' )
-
-    Remove disabled rules from output if requested by user.
-    if not gc.include_disabled_rules:
-       log.verbose("Removing disabled rules from output.")
-       rules = list(filter(lambda d: d['enabled'], rules))
-       log.debug("There are " + str(len(rules)) + ' rules after removing disabled rules.' )
-
-    convert rules from dict back to string
-    rules = stringify_rules(all_rules)
-    log.debug("There are " + str(len(rules)) + ' rules (string) after converting rules from dict to string.' )
-    '''
+    log.info(f'Competed processing all rulesets and local rules')
+    log.info(f'* Total Rules: {str(all_new_rules)}')
 
     # Prepare rules for output
+    log.info(f'writing rules to {gc.rule_path}')
+    header = ("#-------------------------------------------------------------------\n"
+            "#  Rules file created by " + SCRIPT_NAME + " at " + gc.start_time + "\n"
+            "#  " + "\n"
+            "#  To Use this file: " + "\n"
+            "#  in your snort.lua, you need the following settings:" + "\n"
+            "#  set ips.include = '" + gc.rule_path + "',\n")
+    if gc.rule_mode == 'policy':
+        header = header + ("#  set detection.global_default_rule_state = false (this disables all rules by default)" + "\n"
+                "#  set ips.states = '" + gc.policy_path + "',\n"
+                "#  " + "\n")
+    header = header + "#-------------------------------------------------------------------\n\n"
 
-    # remove disabled rules if not including them in the output
-    if not gc.include_disabled_rules:
-        log.debug("Removing disabled rules from output")
-        all_rules = [r for r in all_rules if r['enabled']]
-
-    #   OUTPUT
-
-    write_rulesets_to_disk(all_rules, gc.rule_path)
+    all_new_rules.write_file(gc.rule_path, gc.include_disabled_rules, header)
 
     # write the policy to disk
-    if gc.rule_mode == 'policy':
-        # parse all rules for enabled rules, and build policy file from that
-        all_states = []
-        for rule in all_rules:
-            if rule['enabled']:
-                action = rule['rule'].split()[0]
-                g, s, _ = rule['fingerprint'].split(':', 2)
-                all_states.append(action + '(gid:' + g + '; sid: ' + s + '; enable;)' + "\n")
-
-        write_state_to_disk(all_states, gc.policy_path)
-
+    if gc.policies_path:
+        log.info(f'writing policy file to {gc.policies_path}')
+        (all_new_policies[gc.ips_policy]).write_file(gc.policies_path)
+            
     # copy .so rules from tempdir
     # todo: delete old rules
     if gc.get('sorule_path'):
@@ -854,255 +783,6 @@ def untar_rulesets(files):
     return folder_names
 
 
-def get_text_rules_from_folder(rulefolder_path, uid, ruleset_type, source_type):
-    '''
-    Return text rules sorted by filename from a folder
-        in: full path (string) to a folder, ruleset_type (builtin,text,so)
-        out: list of dicts:
-            rule_dict = {
-                 uid         =  Unique Identifier (from the conf file)
-                 ruleset_type  =  the format of ruleset, must be: (snort_lightspd, snort_community, snort_ruleset, other)
-                 rule        =  the actual rule, in text format
-                 filename    =  the filename where the rule came from (server-iss.rules for example)
-                 source_type      =  the source of the rule, must be: (text, builtin, so, local)
-             }
-    '''
-    log.debug('In function get_text_rules_from_folder. rulefolder_path is: ' + rulefolder_path)
-
-    # TODO: remove snort3-deleted.rules (deleted.rules,experimental.rules,local.rules)
-
-    # check for folder in folder (extraction is weird sometimes)
-    try:
-        f = listdir(rulefolder_path)
-    except Exception:
-        log.info('Directory does not exist, returning nothing: ' + rulefolder_path)
-        return []
-    if len(f) == 1:
-        log.debug('rulefolder_path contains only one object: ' + str(f))
-        if isdir(rulefolder_path + sep + f[0]):
-            rulefolder_path += f[0] + sep
-            log.debug('Updated rulefolder_path is: ' + rulefolder_path)
-
-    all_rules = []
-
-    rules_files = [f for f in scandir(rulefolder_path) if f.is_file() and
-        f.name.endswith('.rules') and
-        f.name != 'includes.rules' and
-        f.name not in gc.ignore]
-
-    log.debug('Rules_files to process are: ')
-    for r in rules_files:
-        log.debug("\t" + r.path)
-
-    for rule_file in rules_files:
-        log.debug("Processing rules file: " + rule_file.name)
-        # todo error handling on fopen
-        with open(rule_file.path, 'r') as f:
-            rules = f.readlines()
-        log.debug("\t" + str(len(rules)) + " lines loaded.")
-
-        for rule in rules:
-            # remove all non-rule lines (leave commented out rules)
-            if is_rule(rule) and not rule.startswith('###### PULLED BY MICROSOFT'):
-                # build our 'rule' object
-                all_rules.append({
-                    'uid':          uid,  # noqa
-                    'ruleset_type': ruleset_type,
-                    'rule':         rule.strip(),  # noqa
-                    'filename':     rule_file.name,  # noqa
-                    'source_type':  source_type,  # noqa
-                    'fingerprint':  fingerprint_rule(rule.strip())  # noqa
-                })
-
-    log.debug('Exiting function get_text_rules_from_folder. Returning ' + str(len(all_rules)) + ' actual rules (no comments).')
-
-    return all_rules
-
-
-def get_policy_from_file(path):
-    '''
-    Get the contents of a ips_policy file
-    '''
-
-    log.debug('Entering function get_policy_from_file. Path is: ' + path)
-
-    enabled_rules = []
-
-    try:
-        with open(path, 'r') as f:
-            enabled_rules = f.readlines()
-    except Exception:
-        log.warning("Error getting policy information from " + path)
-
-    # make sure each element ends in a newline (for output reasons)
-    for i, r in enumerate(enabled_rules):
-        if not enabled_rules[i].endswith("\n"):
-            enabled_rules[i] = r + "\n"
-
-    # TODO: remove any entries that aren't actual policy entries (comments and whitespace)
-    log.debug('Exiting function get_policy_from_file. Returning ' + str(len(enabled_rules)) + ' entries.')
-
-    return enabled_rules
-
-
-def fingerprint_rule(rule):
-    '''
-    Get a fingerprint (GID:SID:REV) from a rule
-    '''
-
-    gid = search(r'gid:(\d+);', rule)
-    if not gid:
-        gid = '1'  # (not all rules have this set even though they're supposed to)
-    else:
-        gid = gid.group(1)
-
-    sid = search(r'sid:(\d+);', rule)
-    if not sid:
-        return None
-
-    # rev sometimes has whitepsace
-    rev = search(r'rev:\s*(\d+);', rule)
-    if not rev:
-        return None
-
-    # fingerprint = gid.group(1) + ':' + sid.group(1) + ':' + rev.group(1)
-    fingerprint = gid + ':' + sid.group(1) + ':' + rev.group(1)
-    # print ("\t - Fingerprint is: " + fingerprint)
-
-    return fingerprint
-
-
-def load_local_rules():
-    '''
-    Process local rules files
-    '''
-
-    log.verbose("Loading local rules files.")
-
-    rules_to_return = []
-
-    for path in gc.local_rules:
-        log.verbose('Processing local rules file: ' + path)
-
-        if isfile(path):
-            # todo error handling on fopen
-            with open(path, 'r') as f:
-                rules = f.readlines()
-        else:
-            log.warning('Error, could not find local rulefile located at: ' + path)
-
-        for i, rule in enumerate(rules):
-            s = is_rule(rule)
-            if s:
-                rules_to_return.append({
-                    'uid':          f'local_rules_{i}',  # noqa
-                    'ruleset_type': None,
-                    'rule':         s['rule'],  # noqa
-                    'filename':     basename(path),  # noqa
-                    'source_type':  'local',  # noqa
-                    'fingerprint':  fingerprint_rule(rule.strip()),  # noqa
-                    'enabled':      s['enabled']  # noqa
-                })
-
-    log.verbose('Returning ' + str(len(rules_to_return)) + ' rules from all local rules files.')
-
-    return rules_to_return
-
-
-def write_rulesets_to_disk(rules, path):
-    '''
-    write the rulesets to a file (array of strings)
-    '''
-
-    log.debug('Entering Function write_rulesets_to_disk.')
-    log.verbose('Preparing to write ' + str(len(rules)) + ' rules to ' + path)
-
-    # if mode == simple, modify rule to comment-out disabled rules
-    if gc.rule_mode == 'simple':
-        for r in rules:
-            if not r['enabled']:
-                r['rule'] = '# ' + r['rule']
-
-    # write all rules to disk. Sort the list first by UID, source_type, filename
-    sorted_rules = sorted(rules, key=lambda k: (k['uid'], k['source_type'], k['filename']))
-
-    header = ''
-
-    # todo: try/catch error
-    with open(path, 'w') as f:
-        f.write("#-------------------------------------------------------------------\n")
-        f.write("#  Rules file created by " + SCRIPT_NAME + " at " + gc.start_time + "\n")
-        f.write("#  " + "\n")
-        f.write("#  To Use this file: " + "\n")
-        f.write("#  in your snort.lua, you need the following settings:" + "\n")
-        f.write("#  set ips.include = '" + gc.rule_path + "',\n")
-        if gc.rule_mode == 'policy':
-            f.write("#  set detection.global_default_rule_state = false (this disables all rules by default)" + "\n")
-            f.write("#  set ips.states = '" + gc.policy_path + "',\n")
-        f.write("#  " + "\n")
-        f.write("#-------------------------------------------------------------------\n\n")
-        f.write("\n")
-        for r in sorted_rules:
-            if header != (r['uid'], r['source_type'], r['filename']):
-                header = (r['uid'], r['source_type'], r['filename'])
-                f.write("\n##### The following rules come from: " + r['uid'] + ' with sourcetype "' + r['source_type'] + '" from ' + r['filename'] + " #####\n\n")
-            f.write(r['rule'] + "\n")
-    log.debug('Exiting Function write_rulesets_to_disk.')
-
-
-def write_state_to_disk(state, path):
-    '''
-    write the rulesets to a file (array of strings)
-    '''
-
-    log.debug('Entering Function write_policy_to_disk. ' + str(len(state)) + ' lines to write to: ' + path)
-
-    # todo: try/catch error
-    with open(path, 'w') as f:
-        f.write("#-------------------------------------------------------------------\n")
-        f.write("#  Policy file created by " + SCRIPT_NAME + " at " + gc.start_time + "\n")
-        f.write("#  " + "\n")
-        f.write("#  To Use this file with your rules file:" + "\n")
-        f.write("#  in your snort.lua, you need the following settings:" + "\n")
-        f.write("#  set detection.global_default_rule_state = false (this disables all rules by default)" + "\n")
-        f.write("#  set ips.include = '" + gc.rule_path + "',\n")
-        f.write("#  set ips.states = '" + gc.policy_path + "',\n")
-        f.write("#  " + "\n")
-        f.write("#-------------------------------------------------------------------\n\n")
-        f.writelines(state)
-        f.write("\n")
-
-    log.debug('Exiting Function write_policy_to_disk.')
-
-
-def is_rule(rule):
-    '''
-    Determine if a string is a valid rule (rule can be commented out
-        and still be true)
-    input: string.
-    output: False if NOT a rule (comment or blank line)
-            {enabled=bool, rule=...}
-    '''
-
-    rule = rule.strip()
-    m = match(r'^[\s#]*.*\(.*sid:.*\)\s*$', rule)
-
-    # edge case
-    if rule.startswith('###### PULLED BY MICROSOFT'):
-        return False
-
-    if not m:
-        return False
-    else:
-        # is a rule, determine if is enabled
-        enabled = not rule.startswith('#')
-
-        # strip all leading hash / whitespace from rule
-        rule = rule.strip("#\n\t ")
-
-        return {'enabled': enabled, 'rule': rule}
-
-
 def print_environment(gc):
     '''
     Print environment Information
@@ -1205,28 +885,6 @@ def get_distro():
     # if not config file, try to determine from OS
     # todo:
     return None
-
-
-def get_policy(policy):
-    '''
-    Determine the current ips policy
-    See: https://www.snort.org/faq/why-are-rules-commented-out-by-default
-    '''
-
-    log.debug("Determining policy from config file.")
-    log.debug('ips_policy is: ' + policy)
-
-    # convert policy to actual filename
-    if policy == 'connectivity':
-        return 'rulestates-connectivity-ips.states'
-    elif policy == 'balanced':
-        return 'rulestates-balanced-ips.states'
-    elif policy == 'security':
-        return 'rulestates-security-ips.states'
-    elif policy == 'max-detect':
-        return 'rulestates-max-detect-ips.states'
-    else:
-        return 'none'
 
 
 # *****************************************************************************
