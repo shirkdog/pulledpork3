@@ -92,7 +92,7 @@ class Logger(object):
         '''
 
         # Work through the list, replacing each
-        for some_str in self._hidden_strings:
+        for some_str in self.hidden_strings:
             msg = msg.replace(some_str, '<hidden>')
 
         # Return final result
@@ -109,7 +109,7 @@ class Logger(object):
         if self.level < level:
             return
 
-        # Sanitize the output 
+        # Sanitize the output
         msg = self._sanitize(msg)
 
         # Print the message
