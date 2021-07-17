@@ -835,12 +835,9 @@ class Rules(object):
         >>> txt
         Rules(loaded:41987, enabled:41987, disabled:0)
         >>>
-        >>> all = Rules()
-        >>> all
-        Rules(loaded:0, enabled:0, disabled:0)
-        >>> all.extend(txt)
-        >>> all
-        Rules(loaded:41987, enabled:41987, disabled:0)
+        >>> pol = txt.policy_from_state()
+        >>> pol
+        Policy(name:rules-state, rules:41987)
         '''
 
         # Setup the new policy
