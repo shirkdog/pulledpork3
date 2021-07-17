@@ -26,7 +26,11 @@ from os.path import isfile, join, sep, abspath, basename, isdir
 from platform import platform, version, uname, system, python_version, architecture
 from re import search, sub, match
 from shutil import rmtree, copy             # remove directory tree, python 3.4+
-from signal import SIGHUP
+try:
+    from signal import SIGHUP               # linux/bsd, not windows
+except ImportError:
+    #from ctypes import CDLL, c_raise,      # Windows reload process (not yet implemented)
+    pass
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
 from tarfile import open as open_tar        # to extract tgz ruleset file
