@@ -494,7 +494,7 @@ def main():
     # -----------------------------------------------------------------------------
     # Download Blocklists
 
-    # If we have a blocklist out file defined...
+    # Have a blocklist out file defined?
     if gc.defined('blocklist_path'):
 
         # Prepare an empty blocklist
@@ -535,7 +535,9 @@ def main():
     # -----------------------------------------------------------------------------
     # Relad Snort
 
-    if gc.get('pid_path'):
+    # Have a PID file defined?
+    if gc.defined('pid_path'):
+
         with open(gc.pid_path, 'r') as f:
             pid = f.readline().strip()
             pid = int(pid)
@@ -716,7 +718,7 @@ def print_operational_settings():
         log.verbose('Blocklist entries will be written to: ' + gc.blocklist_path)
 
     # reload snort
-    if gc.get('pid_path'):
+    if gc.defined('pid_path'):
         log.verbose('Snort will be reloaded with new configuration, Pid loaded from: ' + gc.pid_path)
     else:
         log.verbose('Snort will NOT be reloaded with new configuration.')
