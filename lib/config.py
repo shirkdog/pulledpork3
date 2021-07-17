@@ -129,7 +129,7 @@ class Config(object):
                 thing = thing.strip()
                 if thing and thing not in out_list:
                     out_list.append(thing)
-            return thing
+            return out_list
 
         # Non-critical checks
 
