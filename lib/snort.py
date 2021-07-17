@@ -133,7 +133,7 @@ class Blocklist(object):
         block = self._lines[line]
         return block
 
-    def extend(self, blocklist):
+    def extend(self, blocklist, source='UNDEFINED'):
         '''
         Extend this blocklist from another
 
@@ -158,6 +158,10 @@ class Blocklist(object):
             blocklist = blocklist._lines.copy()
         elif not isinstance(blocklist, (list, tuple)):
             raise ValueError(f'Unexpected blocklist to apply: {blocklist}')
+
+        # Add a comment to indicate the source of following list entries
+        if len(blocklist):
+            self._lines.append(f'# Blocklist Source: {source}')
 
         # Work through the lines of the blocklist
         for line in blocklist:
@@ -204,11 +208,8 @@ class Blocklist(object):
         resp = requests.get(blocklist_url)
         resp.raise_for_status()
 
-        # Add a comment to indicate the source of following list entries
-        self._lines.append(f'# Blocklist URL Source: {blocklist_url}')
-
         # Extend this blocklist with the downloaded content
-        self.extend(resp.text)
+        self.extend(resp.text, source=f'url - {blocklist_url}')
 
     def load_file(self, blocklist_file):
         '''
@@ -228,11 +229,8 @@ class Blocklist(object):
         with open(blocklist_file, 'r') as fh:
             blocklist = fh.readlines()
 
-            # Add a comment to indicate the source of following list entries
-            self._lines.append(f'# Blocklist File Source: {blocklist_file}')
-
             # Extend this blocklist with the loaded file
-            self.extend(blocklist)
+            self.extend(blocklist, source=f'file - {blocklist_file}')
 
     def write_file(self, blocklist_file, header=None):
         '''
