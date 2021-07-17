@@ -243,7 +243,7 @@ def main():
             registered_policies.extend(builtin_policies)
 
             # process so rules
-            if gc.get('sorule_path'):
+            if gc.defined('sorule_path'):
                 # copy files first to temp\so_rules folder (we'll copy them all at the end, this checks for dupes)
                 # todo: error handling
                 so_src_folder = join(ruleset_path, 'so_rules', 'precompiled', gc.distro)
@@ -286,7 +286,7 @@ def main():
             lightspd_policies = Policies()
 
             # the manifest.json file is only used (at this time) for processing .so rules
-            if gc.get('sorule_path'):
+            if gc.defined('sorule_path'):
 
                 json_manifest_file = ruleset_path + sep + 'lightspd' + sep + 'manifest.json'
 
@@ -419,7 +419,7 @@ def main():
 
     # copy .so rules from tempdir
     # todo: delete old rules
-    if gc.get('sorule_path'):
+    if gc.defined('sorule_path'):
         so_src_folder = join(gc.tempdir, 'so_rules')
         src_files = listdir(so_src_folder)
         for file_name in src_files:
@@ -597,7 +597,7 @@ def print_operational_settings():
         log.verbose('The distro used for processing is: ' + gc.distro)
     log.verbose('The ips policy used for processing is: ' + gc.ips_policy)
 
-    if gc.get('sorule_path'):
+    if gc.defined('sorule_path'):
         log.verbose('Pre-compiled (.so) rules will be processed.')
         log.verbose('Pre-compiled (.so) files will be saved to: ' + gc.sorule_path)
     else:
@@ -828,7 +828,7 @@ def get_temp_directory(temp_path, start_time):
         mkdir(tmp)
         mkdir(join(tmp, 'downloaded_rulesets'))
         mkdir(join(tmp, 'extracted_rulesets'))
-        if(gc.get('sorule_path')):
+        if gc.defined('sorule_path'):
             mkdir(join(tmp, 'so_rules'))
     except OSError:
         log.error("Fatal Error: Creation of the temporary working directory %s failed" % tmp)
