@@ -18,7 +18,7 @@ log = logger.Logger()
 ################################################################################
 
 # Rule regex patterns
-RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.+\(.+sid:(\d+);.+\))\s*$')
+RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.*\(.+sid:(\d+);.+\))\s*$')
 RULE_GID_REGEX = re.compile(r'gid:(\d+);')
 RULE_REV_REGEX = re.compile(r'rev:(\d+);')
 POLICY_RULE_REGEX = re.compile(r'^(\w+) \(gid:(\d+?); sid:(\d+?); (\w+);\)$')
@@ -1007,24 +1007,20 @@ class Policy(object):
             if header is not None:
                 fh.write(f'{header}\n')
 
-            # Work through all the policies
-            for _,v in self.rules.items():
-                action = v['action']
-                gid = v['gid']
-                sid = v['sid']
-                if v['state']:
-                    state = 'enable'
-                else:
-                    pass
-                    # not sure if 'disabled' is allowed or whatother options are possible
+            # Work through all the rules in the policy
+            for rule in self.rules.values():
 
-                fh.write(f'{action} (gid:{gid}; sid:{sid}; {state})\n')
+                # TODO: not sure if 'disabled' is allowed or whatother options are possible
+                # For now, skip
+                if not rule['state']:
+                    continue
 
-
+                # Write the policy line
+                fh.write(f'{rule["action"]} (gid:{rule["gid"]}; sid:{rule["sid"]}; enable)\n')
 
 
 ################################################################################
-# Policy - A collection of Policy objects
+# Policies - A collection of Policy objects
 ################################################################################
 
 class Policies(object):
