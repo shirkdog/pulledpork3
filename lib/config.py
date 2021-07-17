@@ -51,11 +51,17 @@ class Config(object):
 
     def __getattr__(self, key):
         '''
-        Provide direct access to the dict, or args, via .key
+        Provide direct access to the dict via .key
         '''
         if key in self._config:
             return self._config[key]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
+
+    def __setattr__(self, key, value):
+        '''
+        Update the _config dict when setting attributes to this config
+        '''
+        self._config[key] = value
 
     def defined(self, key):
         '''

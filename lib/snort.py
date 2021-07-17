@@ -1,6 +1,8 @@
 import os
 import re
 
+import requests
+
 from . import logger
 
 
@@ -20,6 +22,235 @@ RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.+\(.+sid:(\d+);.+\))\s*$')
 RULE_GID_REGEX = re.compile(r'gid:(\d+);')
 RULE_REV_REGEX = re.compile(r'rev:(\d+);')
 POLICY_RULE_REGEX = re.compile(r'^(\w+) \(gid:(\d+?); sid:(\d+?); (\w+);\)$')
+
+
+################################################################################
+# Blocklist - Helps with the management of blocklists
+################################################################################
+
+class Blocklist(object):
+
+    def __init__(self, filename=None, url=None):
+        '''
+        Setup the new blocklist
+
+        Example:
+        >>> bl = Blocklist()
+        >>> bl
+        Blocklist(lines:0)
+        >>>
+        >>> bl = Blocklist(filename='../blocklists/snort.txt')
+        >>> bl
+        Blocklist(lines:1495)
+        >>>
+        >>> bl = Blocklist(url='https://snort.org/downloads/ip-block-list')
+        >>> bl
+        Blocklist(lines:1495)
+        '''
+
+        # Where we'll keep the blocklist lines
+        self._lines = []
+
+        # Are we loading a blocklist file?
+        if filename:
+            self.load_file(filename)
+
+        # Are we loading from a URL?
+        if url:
+            self.download_url(url)
+
+    def __repr__(self):
+        return f'Blocklist(lines:{len(self)})'
+
+    def __len__(self):
+        '''
+        Return the number of lines in the Blocklist
+
+        Example:
+        >>> bl = Blocklist('../blocklists/snort.txt')
+        >>> bl
+        Blocklist(lines:1495)
+        >>>
+        >>> len(bl)
+        1495
+        '''
+        return len(self._lines)
+
+    def __contains__(self, block):
+        '''
+        Return whether a block entry is in the Blocklist object
+        This will also match comments
+
+        Example:
+        >>> bl = Blocklist('../blocklists/snort.txt')
+        >>> bl
+        Blocklist(lines:1495)
+        >>>
+        >>> '178.175.23.87' in bl
+        True
+        >>> 'smurf' in bl
+        False
+        '''
+        return block in self._lines
+
+    def __iter__(self):
+        '''
+        Start the enumeration
+        '''
+        self._iter = self._lines.__iter__()
+        return self
+
+    def __next__(self):
+        '''
+        Get the next block in the enumeration
+
+        Example:
+        >>> bl = Blocklist('../blocklists/snort.txt')
+        >>> bl
+        Blocklist(lines:1495)
+        >>>
+        >>> for block in bl:
+        ...     block
+        ...     break
+        ...
+        '178.175.23.87'
+        '''
+        block = self._iter.__next__()
+        return block
+
+    def __getitem__(self, line):
+        '''
+        Allows for getting blocks using: bl[0]
+
+        Example:
+        >>> bl = Blocklist('../blocklists/snort.txt')
+        >>> bl
+        Blocklist(lines:1495)
+        >>>
+        >>> bl[0]
+        '178.175.23.87'
+        '''
+        block = self._lines[line]
+        return block
+
+    def extend(self, blocklist):
+        '''
+        Extend this blocklist from another
+
+        Example:
+        >>> bl = Blocklist()
+        >>> bl
+        Blocklist(lines:0)
+        >>> bl2 = Blocklist('../blocklists/snort.txt')
+        >>> bl2
+        Blocklist(lines:1495)
+        >>>
+        >>>
+        >>> bl.extend(bl2)
+        >>> bl
+        Blocklist(lines:1495)
+        '''
+
+        # Get a list of blocklist lines to process
+        if isinstance(blocklist, str):
+            blocklist = blocklist.splitlines()
+        elif isinstance(blocklist, Blocklist):
+            blocklist = blocklist._lines.copy()
+        elif not isinstance(blocklist, (list, tuple)):
+            raise ValueError(f'Unexpected blocklist to apply: {blocklist}')
+
+        # Work through the lines of the blocklist
+        for line in blocklist:
+
+            # Strip the line
+            line = line.strip()
+
+            # Empty lines will be dropped
+            if not line:
+                continue
+
+            # Apply all comments
+            if line.startswith('#'):
+                self._lines.append(line)
+
+            # De-dupe the lines on ingest
+            if line in self._lines:
+                continue
+
+            # Add the new line
+            self._lines.append(line)
+
+    def clear(self):
+        '''
+        Clear the blocklist
+        '''
+        self._lines.clear()
+
+    def download_url(self, blocklist_url):
+        '''
+        Download a blocklist from a URL and add it to this blocklist
+
+        Example:
+        >>> bl = Blocklist()
+        >>> bl
+        Blocklist(lines:0)
+        >>>
+        >>> bl.download_url('https://snort.org/downloads/ip-block-list')
+        >>> bl
+        Blocklist(lines:1495)
+        '''
+
+        # Download the URL, and check response status
+        resp = requests.get(blocklist_url)
+        resp.raise_for_status()
+
+        # Save the blocklist and apply it
+        new_blocklist = resp.text
+        self.extend(new_blocklist)
+
+    def load_file(self, blocklist_file):
+        '''
+        Load a local file into this blocklist
+
+        Example:
+        >>> bl = Blocklist()
+        >>> bl
+        Blocklist(lines:0)
+        >>>
+        >>> bl.load_file('var/ip-block-list')
+        >>> bl
+        Blocklist(lines:1495)
+        '''
+
+        # Open the blocklist file and read all the lines
+        with open(blocklist_file, 'r') as fh:
+            blocklist = fh.readlines()
+
+            # Extend this blocklist with the loaded file
+            self.extend(blocklist)
+
+    def write_file(self, blocklist_file, header=None):
+        '''
+        Write this blocklist to a file
+
+        Example:
+        >>> bl = Blocklist('../blocklists/snort.txt')
+        >>> bl
+        Blocklist(lines:1495)
+        >>>
+        >>> bl.write_file('pp-blocklist.txt')
+        '''
+
+        # Open the file for writing
+        with open(blocklist_file, 'w') as fh:
+
+            # Write a file header?
+            if header is not None:
+                fh.write(f'{header}\n')
+
+            # Write all of theblocklist lines
+            for line in self._lines:
+                fh.write(f'{line}\n')
 
 
 ################################################################################
@@ -267,7 +498,7 @@ class Rules(object):
 
     def __getitem__(self, rule_id):
         '''
-        Allows for getting rules  using: rules['1:2001']
+        Allows for getting rules using: rules['1:2001']
 
         Example:
         >>> txt = Rules('../rules')
@@ -378,9 +609,7 @@ class Rules(object):
 
             # Write a file header?
             if header is not None:
-                fh.write(header + '\n')
-
-            # Write the rules
+                fh.write(f'{header}\n')
 
             # Work through all the rules
             for rule in self._all_rules.values():
