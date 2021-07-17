@@ -390,7 +390,7 @@ class Rules(object):
 
         # Setup the rules cache and save the metadata
         self._all_rules = {}
-        self._metadata = metadata
+        self.metadata = metadata
 
         # No rules to process?
         if rules_path is None:
@@ -549,7 +549,7 @@ class Rules(object):
         '''
 
         # We'll use a copy
-        metadata = self._metadata.copy()
+        metadata = self.metadata.copy()
 
         # Work through the policy file
         with open(rules_file, 'r') as fh:
@@ -642,7 +642,7 @@ class Rules(object):
         new_rules = Rules()
 
         # Copy the metadata over
-        new_rules._metadata = self._metadata.copy()
+        new_rules.metadata = self.metadata.copy()
 
         # Copy over the rules cache
         for rule_id, rule in self._all_rules.items():
