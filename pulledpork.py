@@ -504,21 +504,33 @@ def main():
         # Downloading the Snort blocklist?
         if gc.snort_blocklist:
             log.verbose('Downloading the Snort blocklist')
-            new_blocklist.download_url(SNORT_BLOCKLIST_URL)
+            try:
+                new_blocklist.download_url(SNORT_BLOCKLIST_URL)
+            except Exception as e:
+                log.warning(f'Unable to download the Snort blocklist: {e}')
 
         # ET blocklist?
         if gc.et_blocklist:
             log.verbose('Downloading the ET blocklist')
-            new_blocklist.download_url(ET_BLOCKLIST_URL)
+            try:
+                new_blocklist.download_url(ET_BLOCKLIST_URL)
+            except Exception as e:
+                log.warning(f'Unable to download the ET blocklist: {e}')
 
         # Any other blocklists
         for bl_url in gc.blocklist_urls:
             log.verbose(f'Downloading the blocklist: {bl_url}')
-            new_blocklist.download_url(bl_url)
+            try:
+                new_blocklist.download_url(bl_url)
+            except Exception as e:
+                log.warning(f'Unable to download blocklist: {e}')
 
         # Compose the blocklist header and write the blocklist file
         blocklist_header = f'# BLOCKLIST CREATED BY {SCRIPT_NAME.upper()} ON {gc.start_time}'
-        new_blocklist.write_file(gc.blocklist_path, blocklist_header)
+        try:
+            new_blocklist.write_file(gc.blocklist_path, blocklist_header)
+        except Exception as e:
+            log.warning(f'Unable to write blocklist: {e}')
 
     # -----------------------------------------------------------------------------
     # Relad Snort
