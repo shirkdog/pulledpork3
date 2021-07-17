@@ -826,6 +826,35 @@ class Rules(object):
             # Save the rule to cache
             self._all_rules[new_rule.rule_id] = new_rule
 
+    def policy_from_state(self, name='rules-state'):
+        '''
+        Return a Policy object based on the state of the rules
+
+        Example:
+        >>> txt = Rules('../rules')
+        >>> txt
+        Rules(loaded:41987, enabled:41987, disabled:0)
+        >>>
+        >>> all = Rules()
+        >>> all
+        Rules(loaded:0, enabled:0, disabled:0)
+        >>> all.extend(txt)
+        >>> all
+        Rules(loaded:41987, enabled:41987, disabled:0)
+        '''
+
+        # Setup the new policy
+        new_policy = Policy(name)
+
+        # Work through the rules
+        for rule in self._all_rules.values():
+
+            # Update the policy with the rule state
+            new_policy.update_rule(rule.gid, rule.sid, rule.action, rule.state)
+
+        # Return the policy
+        return new_policy
+
 
 ################################################################################
 # Policy - A Rule policy
@@ -896,6 +925,30 @@ class Policy(object):
         else:
             raise ValueError(f'Not a recognized rule: {rule}')
 
+    def update_rule(self, gid, sid, action='alert', state=True):
+        '''
+        Update, or add, a rule in this policy
+
+        Example:
+        >>> pol = Policy('custom')
+        >>> pol
+        Policy(name:custom, rules:0)
+        >>> pol.update_rule(1, 2000)
+        >>> pol
+        Policy(name:custom, rules:1)
+        '''
+
+        # Compose the rule ID
+        rule_id = f'{gid}:{sid}'
+
+        # Save the rule to the dict
+        self.rules[rule_id] = {
+            'gid': gid,
+            'sid': sid,
+            'action': action,
+            'state': state
+        }
+
     def load_file(self, policy_file):
         '''
         Load a policy file
@@ -937,16 +990,8 @@ class Policy(object):
                 action = rule_parts[1]
                 state = rule_parts[4] == 'enable'
 
-                # Compose the rule ID
-                rule_id = f'{gid}:{sid}'
-
-                # Save the rule to the dict
-                self.rules[rule_id] = {
-                    'gid': gid,
-                    'sid': sid,
-                    'action': action,
-                    'state': state
-                }
+                # Save the rule
+                self.update_rule(gid, sid, action, state)
 
     def copy(self):
         '''
