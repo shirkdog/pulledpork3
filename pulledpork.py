@@ -37,6 +37,7 @@ import requests
 
 # Our PulledPork3 internal libraries
 from lib import config, logger
+from lib.snort import Blocklist
 
 
 # -----------------------------------------------------------------------------
@@ -492,11 +493,32 @@ def main():
 
     # -----------------------------------------------------------------------------
     # Download Blocklists
-    log.info("Preparing to process blocklists.")
-    bloclist_urls = get_blocklist_urls()
-    blocklist_entries = get_blocklists(gc.start_time, bloclist_urls)
 
-    write_blocklists_to_file(blocklist_entries)
+    # If we have a blocklist out file defined...
+    if gc.defined('blocklist_path'):
+
+        # Prepare an empty blocklist
+        log.info("Preparing to process blocklists.")
+        new_blocklist = Blocklist()
+
+        # Downloading the Snort blocklist?
+        if gc.snort_blocklist:
+            log.verbose('Downloading the Snort blocklist')
+            new_blocklist.download_url(SNORT_BLOCKLIST_URL)
+
+        # ET blocklist?
+        if gc.et_blocklist:
+            log.verbose('Downloading the ET blocklist')
+            new_blocklist.download_url(ET_BLOCKLIST_URL)
+
+        # Any other blocklists
+        for bl_url in gc.blocklist_urls:
+            log.verbose(f'Downloading the blocklist: {bl_url}')
+            new_blocklist.download_url(bl_url)
+
+        # Compose the blocklist header and write the blocklist file
+        blocklist_header = f'# BLOCKLIST CREATED BY {SCRIPT_NAME.upper()} ON {gc.start_time}'
+        new_blocklist.write_file(gc.blocklist_path, blocklist_header)
 
     # -----------------------------------------------------------------------------
     # Relad Snort

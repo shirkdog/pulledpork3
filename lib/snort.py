@@ -204,9 +204,11 @@ class Blocklist(object):
         resp = requests.get(blocklist_url)
         resp.raise_for_status()
 
-        # Save the blocklist and apply it
-        new_blocklist = resp.text
-        self.extend(new_blocklist)
+        # Add a comment to indicate the source of following list entries
+        self._lines.append(f'# Blocklist URL Source: {blocklist_url}')
+
+        # Extend this blocklist with the downloaded content
+        self.extend(resp.text)
 
     def load_file(self, blocklist_file):
         '''
@@ -225,6 +227,9 @@ class Blocklist(object):
         # Open the blocklist file and read all the lines
         with open(blocklist_file, 'r') as fh:
             blocklist = fh.readlines()
+
+            # Add a comment to indicate the source of following list entries
+            self._lines.append(f'# Blocklist File Source: {blocklist_file}')
 
             # Extend this blocklist with the loaded file
             self.extend(blocklist)

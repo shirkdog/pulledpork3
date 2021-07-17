@@ -200,7 +200,7 @@ class Config(object):
             log.error('`oinkcode` is required when registered or LightSPD rulesets are enabled')
 
         # Have blocklists enabled, but no target file?
-        if any([self.snort_blocklist, self.et_blocklist]) and not self.defined('blocklist_path'):
+        if any([self.snort_blocklist, self.et_blocklist, len(self.blocklist_urls)]) and not self.defined('blocklist_path'):
             log.error('One or more blocklists are enabled but `blocklist_path` is missing in configuration')
 
         # Do we need to ensure distro is set in config?
