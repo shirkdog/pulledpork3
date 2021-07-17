@@ -398,16 +398,24 @@ def main():
 
     # Prepare rules for output
     log.info(f'writing rules to {gc.rule_path}')
-    header = ("#-------------------------------------------------------------------\n"
-              "#  Rules file created by " + SCRIPT_NAME + " at " + gc.start_time + "\n"
-              "#  \n"
-              "#  To Use this file: \n"
-              "#  in your snort.lua, you need the following settings:\n"
-              "#  set ips.include = '" + gc.rule_path + "',\n")
+    header = (f'#-------------------------------------------------------------------\n'
+              f'#  Rules file created by {SCRIPT_NAME}  at {gc.start_time}\n'
+              f'#  \n'
+              f'#  To Use this file: in your snort.lua, you need the following settings:\n'
+              f'#  ips =\n'
+              f'#  {{\n'
+              f'#      include = "{gc.rule_path}",\n' )
+
     if gc.rule_mode == 'policy':
-        header += ("#  set detection.global_default_rule_state = false (this disables all rules by default)\n"
-                   "#  set ips.states = '" + gc.policy_path + "',\n"
-                   "#\n")
+        header += (f'#      states = "{gc.policy_path}",\n'
+                  f'#      ...\n'
+                  f'#  }}\n#\n'
+                  f'#  detection=\n'
+                  f'#  {{\n'
+                  f'#      global_default_rule_state = false,\n' )
+
+    header += f'#      ...\n'
+    header += f'#  }}\n#\n'
     header += "#-------------------------------------------------------------------\n\n"
 
     all_new_rules.write_file(gc.rule_path, gc.include_disabled_rules, header)
@@ -467,7 +475,7 @@ def main():
         blocklist_header += f'# To Use this file, in your snort.lua, you need the following settings:\n'
         blocklist_header += f'# reputation = \n'
         blocklist_header += f'# {{\n'
-        blocklist_header += f'#     blocklist = "{gc.blocklist_path}"\n'
+        blocklist_header += f'#     blocklist = "{gc.blocklist_path}",\n'
         blocklist_header += f'#     ...\n'
         blocklist_header += f'# }}\n'
         blocklist_header += f'#\n#-------------------------------------------------------------------\n\n'
