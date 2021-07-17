@@ -217,7 +217,7 @@ class Blocklist(object):
         >>> bl
         Blocklist(lines:0)
         >>>
-        >>> bl.load_file('var/ip-block-list')
+        >>> bl.load_file('../blocklists/snort.txt')
         >>> bl
         Blocklist(lines:1495)
         '''
