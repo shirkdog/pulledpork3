@@ -358,8 +358,8 @@ def main():
                     lightspd_rules = Rules(so_rules_path)
                     lightspd_policies = Policies(so_rules_path)
 
-                log.verbose(f'* SO Rules processedt: {lightspd_rules}')
-                log.verbose(f'* SO Policies processedt: {lightspd_policies}')
+                log.verbose(f'* SO Rules processed: {lightspd_rules}')
+                log.verbose(f'* SO Policies processed: {lightspd_policies}')
 
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
@@ -369,8 +369,8 @@ def main():
             lightspd_text_rules = Rules(text_rules_path, conf.ignored_files)
             lightspd_text_policies = Policies(text_rules_path)
 
-            log.verbose(f'* text Rules processedt: {lightspd_text_rules}')
-            log.verbose(f'* text Policies processedt: {lightspd_text_policies}')
+            log.verbose(f'* text Rules processed: {lightspd_text_rules}')
+            log.verbose(f'* text Policies processed: {lightspd_text_policies}')
 
             lightspd_rules.extend(lightspd_text_rules)
             lightspd_policies.extend(lightspd_text_policies)
@@ -382,8 +382,8 @@ def main():
             lightspd_builtin_rules = Rules(builtin_rules_path, conf.ignored_files)
             lightspd_builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f'* builtin Rules processedt: {lightspd_builtin_rules}')
-            log.verbose(f'* builtin Policies processedt: {lightspd_builtin_policies}')
+            log.verbose(f'* builtin Rules processed: {lightspd_builtin_rules}')
+            log.verbose(f'* builtin Policies processed: {lightspd_builtin_policies}')
 
             lightspd_rules.extend(lightspd_builtin_rules)
             lightspd_policies.extend(lightspd_builtin_policies)
