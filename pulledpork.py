@@ -406,11 +406,6 @@ def main():
     log.info(f'* Total Rules: {all_new_rules}')
     log.info(f'* Total Policies: {all_new_policies}')
 
-    # if rule_mode = policy, we need to enable all rules (remove the hash)
-    if conf.rule_mode == 'policy':
-        for rule in all_new_rules:
-            rule.state = True
-
     # Prepare rules for output
     log.info(f'writing rules to {conf.rule_path}')
     header = (f'#-------------------------------------------------------------------\n'
