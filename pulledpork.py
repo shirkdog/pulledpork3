@@ -431,6 +431,14 @@ def main():
         header += f'#    --plugin-path "{conf.sorule_path}"\n#\n'
     header += "#-------------------------------------------------------------------\n\n"
 
+    # if rule_mode is policy, and disabled rules should be written, we need to 
+    # enable all rules (but not modify the policy) so that all disabled rules
+    # are written without a hash mark.
+    if conf.rule_mode == 'policy' and conf.include_disabled_rules:
+        for rule in all_new_rules:
+            rule.state = True
+
+    # write rules to disk
     all_new_rules.write_file(conf.rule_path, conf.include_disabled_rules, header)
 
     # write the policy to disk
