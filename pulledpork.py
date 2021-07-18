@@ -214,6 +214,8 @@ def main():
         # determine ruleset type:
         if ruleset_name == 'SNORT_COMMUNITY':
 
+            log.verbose('Processing Community ruleset')
+
             # only simple rules to worry about
             # community rules have an extra folder to delve into
             rule_path = join(ruleset_path, 'snort3-community-rules')
@@ -221,28 +223,37 @@ def main():
             # todo: wrap next line in try/catch
             community_rules = Rules(rule_path, conf.ignored_files)
             log.verbose(f'\tLoaded community rules: {community_rules}')
-            all_new_rules.extend(community_rules)
 
+            # Generate the community policy from the rules
             # commmunity rules don't come with a policy file, so create one (in case the rule_mode = policy)
-            all_new_policies.extend(community_rules.policy_from_state(conf.ips_policy))
+            community_policy = community_rules.policy_from_state(conf.ips_policy)
+
+            log.verbose('Finished processing Community ruleset')
+            log.verbose(f'* Community Rules: {community_rules}')
+            log.verbose(f'* Community Policies: {community_policy}')
+
+            all_new_rules.extend(community_rules)
+            all_new_policies.extend(community_policy)
 
         elif ruleset_name == 'SNORT_REGISTERED':
+
+            log.verbose('Processing Registered ruleset')
 
             # process text rules
             text_rules_path = join(ruleset_path, 'rules')
             registered_rules = Rules(text_rules_path, conf.ignored_files)
             registered_policies = Policies(text_rules_path)
 
-            log.verbose(f'* Text Rules processed from Registered ruleset: {registered_rules}')
-            log.verbose(f'* Text Policies processed from Registered ruleset: {registered_policies}')
+            log.verbose(f'* Text Rules:: {registered_rules}')
+            log.verbose(f'* Text Policies:: {registered_policies}')
 
             # process builtin rules
             builtin_rules_path = join(ruleset_path, 'builtins')
             builtin_rules = Rules(builtin_rules_path)
             builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f'* Builtin Rules processed from Registered ruleset: {builtin_rules}')
-            log.verbose(f'* Builtin Policies processed from Registered ruleset: {builtin_policies}')
+            log.verbose(f'* Builtin Rules:: {builtin_rules}')
+            log.verbose(f'* Builtin Policies:: {builtin_policies}')
 
             registered_rules.extend(builtin_rules)
             registered_policies.extend(builtin_policies)
@@ -265,14 +276,11 @@ def main():
                 so_rules = Rules(so_rules_path)
                 so_policies = Policies(so_rules_path)
 
-                log.verbose(f'* SO Rules processed from Registered ruleset: {so_rules}')
-                log.verbose(f'* SO Policies processed from Registered ruleset: {so_policies}')
+                log.verbose(f'* SO Rules:: {so_rules}')
+                log.verbose(f'* SO Policies:: {so_policies}')
 
                 registered_rules.extend(so_rules)
                 registered_policies.extend(so_policies)
-
-            log.verbose(f'* Rules processed from Registered ruleset: {registered_rules}')
-            log.verbose(f'* Policies processed from Registered ruleset: {registered_policies}')
 
             log.verbose(f'Preparing to apply policy {conf.ips_policy} to Registered rules')
             log.verbose(f' - Registered rules before policy application: {registered_rules}')
@@ -280,12 +288,16 @@ def main():
             # apply the policy to these rules
             registered_rules.apply_policy(registered_policies[conf.ips_policy])
 
-            log.verbose(f' - Registered rules after policy application: {registered_rules}')
+            log.verbose('Finished processing Registered ruleset')
+            log.verbose(f'* Registered Rules: {registered_rules}')
+            log.verbose(f'* Registered Policies: {registered_policies}')
 
             all_new_rules.extend(registered_rules)
             all_new_policies.extend(registered_policies)
 
         elif ruleset_name == 'SNORT_LIGHTSPD':
+
+            log.verbose('Processing LightSPD ruleset')
 
             lightspd_rules = Rules()
             lightspd_policies = Policies()
@@ -293,7 +305,7 @@ def main():
             # the manifest.json file is only used (at this time) for processing .so rules
             if conf.defined('sorule_path'):
 
-                json_manifest_file = ruleset_path + sep + 'lightspd' + sep + 'manifest.json'
+                json_manifest_file = join(ruleset_path, 'lightspd', 'manifest.json')
 
                 # load json manfiest file to identify .so rules location
                 log.verbose('Processing json manifest file ' + json_manifest_file)
@@ -331,23 +343,23 @@ def main():
                     log.debug('modules_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + modules_path)
 
                     # copy so files from our archive to working folder
-                    so_src_folder = ruleset_path + 'lightspd' + sep + modules_path + sep + 'so_rules' + sep
+                    so_src_folder = join(ruleset_path, 'lightspd', modules_path, 'so_rules')
                     src_files = listdir(so_src_folder)
                     for file_name in src_files:
                         full_file_name = join(so_src_folder, file_name)
                         if isfile(full_file_name):
-                            copy(full_file_name, conf.tempdir + sep + 'so_rules' + sep)
+                            copy(full_file_name, join(conf.tempdir, 'so_rules'))
 
                     # get SO rule stub files
                     # todo: generate stubs if distro folder doesn't exist
-                    so_rules_path = ruleset_path + 'lightspd' + sep + 'modules' + sep + 'stubs' + sep
+                    so_rules_path = join(ruleset_path, 'lightspd', 'modules', 'stubs')
                     # r = get_text_rules_from_folder(so_rules_path, 'SNORT_LIGHTSPD', 'snort_ruleset', 'so')
                     # rules.extend(r)
                     lightspd_rules = Rules(so_rules_path)
                     lightspd_policies = Policies(so_rules_path)
 
-                log.verbose(f'* SO Rules processed from LightSPD ruleset: {lightspd_rules}')
-                log.verbose(f'* SO Policies processed from LightSPD ruleset: {lightspd_policies}')
+                log.verbose(f'* SO Rules processedt: {lightspd_rules}')
+                log.verbose(f'* SO Policies processedt: {lightspd_policies}')
 
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
@@ -357,8 +369,8 @@ def main():
             lightspd_text_rules = Rules(text_rules_path, conf.ignored_files)
             lightspd_text_policies = Policies(text_rules_path)
 
-            log.verbose(f'* text Rules processed from LightSPD ruleset: {lightspd_text_rules}')
-            log.verbose(f'* text Policies processed from LightSPD ruleset: {lightspd_text_policies}')
+            log.verbose(f'* text Rules processedt: {lightspd_text_rules}')
+            log.verbose(f'* text Policies processedt: {lightspd_text_policies}')
 
             lightspd_rules.extend(lightspd_text_rules)
             lightspd_policies.extend(lightspd_text_policies)
@@ -370,8 +382,8 @@ def main():
             lightspd_builtin_rules = Rules(builtin_rules_path, conf.ignored_files)
             lightspd_builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f'* builtin Rules processed from LightSPD ruleset: {lightspd_builtin_rules}')
-            log.verbose(f'* builtin Policies processed from LightSPD ruleset: {lightspd_builtin_policies}')
+            log.verbose(f'* builtin Rules processedt: {lightspd_builtin_rules}')
+            log.verbose(f'* builtin Policies processedt: {lightspd_builtin_policies}')
 
             lightspd_rules.extend(lightspd_builtin_rules)
             lightspd_policies.extend(lightspd_builtin_policies)
@@ -381,7 +393,10 @@ def main():
 
             # apply the policy to these rules
             lightspd_rules.apply_policy(lightspd_policies[conf.ips_policy])
-            log.verbose(f' - LightSPD rules after policy application:  {lightspd_rules}')
+
+            log.verbose('Finished processing LightSPD ruleset')
+            log.verbose(f'* LightSPD Rules: {registered_rules}')
+            log.verbose(f'* LightSPD Policies: {registered_policies}')
 
             all_new_rules.extend(lightspd_rules)
             all_new_policies.extend(lightspd_policies)
@@ -390,9 +405,11 @@ def main():
             log.warning("Unknown ruleset archive folder recieved.")
             # TODO: non-standard ruleset, we need to figure it out
 
-    log.info(f'Competed processing all rulesets')
-    log.info(f'* Total Rules: {all_new_rules}')
-    log.info(f'* Total Policies: {all_new_policies}')
+    log.verbose('Competed processing all rulesets before local rulesets:')
+    log.verbose(f'* Collected Rules: {all_new_rules}')
+    log.verbose('* Collected Policies:')
+    for policy in all_new_policies:
+        log.verbose(f'    - {policy}')
 
     for path in conf.local_rules:
         local_rules = Rules(path)
@@ -402,36 +419,38 @@ def main():
         # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
         all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
 
-    log.info(f'Competed processing all rulesets and local rules')
-    log.info(f'* Total Rules: {all_new_rules}')
-    log.info(f'* Total Policies: {all_new_policies}')
+    log.info('Competed processing all rulesets and local rules:')
+    log.info(f'* Collected Rules: {all_new_rules}')
+    log.info('* Collected Policies:')
+    for policy in all_new_policies:
+        log.info(f'    - {policy}')
 
     # Prepare rules for output
-    log.info(f'writing rules to {conf.rule_path}')
-    header = (f'#-------------------------------------------------------------------\n'
+    log.info(f'Writing rules to: {conf.rule_path}')
+    header = ('#-------------------------------------------------------------------\n'
               f'#  Rules file created by {SCRIPT_NAME}  at {conf.start_time}\n'
-              f'#  \n'
-              f'#  To Use this file: in your snort.lua, you need the following settings:\n'
-              f'#  ips =\n'
-              f'#  {{\n'
-              f'#      include = "{conf.rule_path}",\n' )
+              '#  \n'
+              '#  To Use this file: in your snort.lua, you need the following settings:\n'
+              '#  ips =\n'
+              '#  {{\n'
+              f'#      include = "{conf.rule_path}",\n')
     if conf.rule_mode == 'policy':
         header += (f'#      states = "{conf.policy_path}",\n'
-                  f'#      ...\n'
-                  f'#  }}\n#\n'
-                  f'#  detection=\n'
-                  f'#  {{\n'
-                  f'#      global_default_rule_state = false,\n' )
-    header += f'#      ...\n'
-    header += f'#  }}\n#\n'
+                   '#      ...\n'
+                   '#  }}\n#\n'
+                   '#  detection=\n'
+                   '#  {{\n'
+                   '#      global_default_rule_state = false,\n')
+    header += '#      ...\n'
+    header += '#  }}\n#\n'
     if conf.defined('sorule_path'):
-        header += f'# You have chosen to enable so rules.\n'
-        header += f'# To prevent errors when running snort, make sure to include\n'
-        header += f'# the following command-line option:\n'
+        header += '# You have chosen to enable so rules.\n'
+        header += '# To prevent errors when running snort, make sure to include\n'
+        header += '# the following command-line option:\n'
         header += f'#    --plugin-path "{conf.sorule_path}"\n#\n'
     header += "#-------------------------------------------------------------------\n\n"
 
-    # if rule_mode is policy, and disabled rules should be written, we need to 
+    # if rule_mode is policy, and disabled rules should be written, we need to
     # enable all rules (but not modify the policy) so that all disabled rules
     # are written without a hash mark.
     if conf.rule_mode == 'policy' and conf.include_disabled_rules:
@@ -443,7 +462,7 @@ def main():
 
     # write the policy to disk
     if conf.rule_mode == 'policy':
-        log.info(f'writing policy file to {conf.policy_path}')
+        log.info(f'Writing policy file to: {conf.policy_path}')
         (all_new_policies[conf.ips_policy]).write_file(conf.policy_path)
 
     # copy .so rules from tempdir
@@ -463,7 +482,6 @@ def main():
     if conf.defined('blocklist_path') and any([conf.snort_blocklist, conf.et_blocklist, len(conf.blocklist_urls)]):
 
         # Prepare an empty blocklist
-        log.info("Preparing to process blocklists.")
         new_blocklist = Blocklist()
 
         # Downloading the Snort blocklist?
@@ -501,6 +519,7 @@ def main():
         blocklist_header += f'# }}\n'
         blocklist_header += f'#\n#-------------------------------------------------------------------\n\n'
 
+        log.info(f'Writing blocklist file to: {conf.blocklist_path}')
         try:
             new_blocklist.write_file(conf.blocklist_path, blocklist_header)
         except Exception as e:
