@@ -230,7 +230,7 @@ def main():
 
             log.verbose('Finished processing Community ruleset')
             log.verbose(f'* Community Rules: {community_rules}')
-            log.verbose(f'* Community Policies: {community_policy}')
+            log.verbose(f'* Community Policy: {community_policy}')
 
             all_new_rules.extend(community_rules)
             all_new_policies.extend(community_policy)
@@ -405,7 +405,7 @@ def main():
             log.warning("Unknown ruleset archive folder recieved.")
             # TODO: non-standard ruleset, we need to figure it out
 
-    log.verbose('Competed processing all rulesets before local rulesets:')
+    log.verbose('Completed processing all rulesets before local rulesets:')
     log.verbose(f'* Collected Rules: {all_new_rules}')
     log.verbose('* Collected Policies:')
     for policy in all_new_policies:
@@ -419,7 +419,7 @@ def main():
         # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
         all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
 
-    log.info('Competed processing all rulesets and local rules:')
+    log.info('Completed processing all rulesets and local rules:')
     log.info(f'* Collected Rules: {all_new_rules}')
     log.info('* Collected Policies:')
     for policy in all_new_policies:
