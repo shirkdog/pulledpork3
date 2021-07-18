@@ -223,7 +223,7 @@ class Config(object):
 
         # have a blocklist target file, but no blocklists enabled?
         if self.defined('blocklist_path') and not any([self.snort_blocklist, self.et_blocklist, len(self.blocklist_urls)]):
-            log.warning('`blocklist_path` is configurd but no blocklists have been specified for download')       
+            log.warning('`blocklist_path` is configured but no blocklists have been specified for download')
 
         # Do we need to ensure distro is set in config?
 
