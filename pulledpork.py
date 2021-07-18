@@ -420,7 +420,6 @@ def main():
               f'#  ips =\n'
               f'#  {{\n'
               f'#      include = "{conf.rule_path}",\n' )
-
     if conf.rule_mode == 'policy':
         header += (f'#      states = "{conf.policy_path}",\n'
                   f'#      ...\n'
@@ -428,9 +427,13 @@ def main():
                   f'#  detection=\n'
                   f'#  {{\n'
                   f'#      global_default_rule_state = false,\n' )
-
     header += f'#      ...\n'
     header += f'#  }}\n#\n'
+    if conf.defined('sorule_path'):
+        header += f'# You have chosen to enable so rules.\n'
+        header += f'# To prevent errors when running snort, make sure to include\n'
+        header += f'# the following command-line option:\n'
+        header += f'#    --plugin-path "{conf.sorule_path}"\n#\n'
     header += "#-------------------------------------------------------------------\n\n"
 
     all_new_rules.write_file(conf.rule_path, conf.include_disabled_rules, header)
