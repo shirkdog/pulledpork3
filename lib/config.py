@@ -194,11 +194,16 @@ class Config(object):
 
             # No policy_path?
             if not self.defined('policy_path'):
-                log.error('`rule_mode` is set to "policy", but `policy_path` is missing in configuration')
+                log.error(f'`rule_mode` is set to "policy", but `policy_path` is missing in configuration')
 
             # Invalid IPS policy?
             if self.ips_policy not in VALID_IPS_POLICIES:
                 log.error(f'`ips_policy` has an unexpected policy name: {self.ips_policy}')
+
+        # Using simple rule_mode
+        if self.rule_mode == 'simple':
+            if self.defined('policy_path'):
+                log.warning(f'`rule_mode` is set to "simple", but `policy_path` is is set (but not used in "simple)"')
 
         # Enabled more than one official ruleset?
         num_enabled_rulesets = [self.community_ruleset, self.registered_ruleset, self.lightspd_ruleset].count(True)

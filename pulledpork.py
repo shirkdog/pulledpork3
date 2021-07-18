@@ -223,8 +223,8 @@ def main():
             log.verbose(f'\tLoaded community rules: {community_rules}')
             all_new_rules.extend(community_rules)
 
-            # ? how to create a policy file from these rules?
-            # all_new_policies.extend(???)
+            # commmunity rules don't come with a policy file, so create one (in case the rule_mode = policy)
+            all_new_policies.extend(community_rules.policy_from_state(conf.ips_policy))
 
         elif ruleset_name == 'SNORT_REGISTERED':
 
@@ -392,14 +392,24 @@ def main():
 
     log.info(f'Competed processing all rulesets')
     log.info(f'* Total Rules: {all_new_rules}')
+    log.info(f'* Total Policies: {all_new_policies}')
 
     for path in conf.local_rules:
         local_rules = Rules(path)
         log.info(f'loaded local rules file: {local_rules} from {path}')
         all_new_rules.extend(local_rules)
 
+        # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
+        all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
+
     log.info(f'Competed processing all rulesets and local rules')
     log.info(f'* Total Rules: {all_new_rules}')
+    log.info(f'* Total Policies: {all_new_policies}')
+
+    # if rule_mode = policy, we need to enable all rules (remove the hash)
+    if conf.rule_mode == 'policy':
+        for rule in all_new_rules:
+            rule.state = True
 
     # Prepare rules for output
     log.info(f'writing rules to {conf.rule_path}')
@@ -426,7 +436,7 @@ def main():
     all_new_rules.write_file(conf.rule_path, conf.include_disabled_rules, header)
 
     # write the policy to disk
-    if conf.defined('policy_path'):
+    if conf.rule_mode == 'policy':
         log.info(f'writing policy file to {conf.policy_path}')
         (all_new_policies[conf.ips_policy]).write_file(conf.policy_path)
 
