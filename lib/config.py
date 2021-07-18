@@ -106,12 +106,15 @@ class Config(object):
                 # Save the key-value pair to the config
                 self._config[key] = val
 
-        # Debug log the config
-        log.debug(f'After loading configuration from: {config_file}')
+        log.debug(f'Exiting: Config.load({config_file})')
+
+    def log_config(self):
+        '''
+        Log the current config
+        '''
+        log.debug('Current configuration:')
         for key, val in self.items():
             log.debug(f'  Key: {key}\tValue: {val}')
-
-        log.debug(f'Exiting: Config.load({config_file})')
 
     def validate(self):
         '''
@@ -220,7 +223,7 @@ class Config(object):
 
         # have a blocklist target file, but no blocklists enabled?
         if self.defined('blocklist_path') and not any([self.snort_blocklist, self.et_blocklist, len(self.blocklist_urls)]):
-            log.warning('`blocklist_path` is configurd but no blocklists have been specified for download')       
+            log.warning('`blocklist_path` is configured but no blocklists have been specified for download')
 
         # Do we need to ensure distro is set in config?
 
