@@ -214,7 +214,7 @@ def main():
         if ruleset_name == 'SNORT_COMMUNITY':
 
             log.info('Processing Community ruleset')
-            log.vervose(f' - Ruleset path: {ruleset_path}')
+            log.verbose(f' - Ruleset path: {ruleset_path}')
 
             # only simple rules to worry about
             # community rules have an extra folder to delve into
@@ -237,7 +237,7 @@ def main():
         elif ruleset_name == 'SNORT_REGISTERED':
 
             log.verbose('Processing Registered ruleset')
-            log.vervose(f' - Ruleset path: {ruleset_path}')
+            log.verbose(f' - Ruleset path: {ruleset_path}')
 
             # process text rules
             text_rules_path = join(ruleset_path, 'rules')
@@ -298,7 +298,7 @@ def main():
         elif ruleset_name == 'SNORT_LIGHTSPD':
 
             log.verbose('Processing LightSPD ruleset')
-            log.vervose(f' - Ruleset path: {ruleset_path}')
+            log.verbose(f' - Ruleset path: {ruleset_path}')
 
             lightspd_rules = Rules()
             lightspd_policies = Policies()
