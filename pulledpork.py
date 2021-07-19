@@ -396,8 +396,8 @@ def main():
             lightspd_rules.apply_policy(lightspd_policies[conf.ips_policy])
 
             log.verbose('Finished processing LightSPD ruleset')
-            log.verbose(f' - LightSPD Rules:  {registered_rules}')
-            log.verbose(f' - LightSPD Policies:  {registered_policies}')
+            log.verbose(f' - LightSPD Rules:  {lightspd_rules}')
+            log.verbose(f' - LightSPD Policies:  {lightspd_policies}')
 
             all_new_rules.extend(lightspd_rules)
             all_new_policies.extend(lightspd_policies)
@@ -905,6 +905,11 @@ def get_snort_version(snort_path=None):
 
     log.debug("Determining Snort version from Snort binary.")
 
+    # Check for binary in provided path
+    if snort_path is not None:
+        if not isfile(snort_path):
+            log.error(f'`snort_path` is provided in config, but binary does not exist: {snort_path}')
+
     # Default to just "snort" if no path provided
     snort_path = snort_path or 'snort'
 
@@ -918,14 +923,14 @@ def get_snort_version(snort_path=None):
         process = Popen(command, stdout=PIPE, stderr=PIPE, shell=True)
         output, error = process.communicate()
     except Exception as e:
-        log.error('Fatal error determining snort version from binary:' + str(e))
+        log.error(f'Fatal error determining snort version from binary: {e}')
 
     # check return call for error
     if error:
-        log.error('Fatal error determining snort version from binary:' + process.returncode + ' ' + error.strip())
+        log.error(f'Fatal error determining snort version from binary: [{process.returncode}] {error.strip()}')
 
     # parse stdout from snort binary to determine version number
-    log.debug("\tOutput from Snort binary with -V flag is: \n" + str(output) + "\n")
+    log.debug(f"\tOutput from Snort binary with -V flag is: \n{output}\n")
     x = search(r"Version ([-\.\d\w]+)", str(output))
     if not x:
         log.error('Unable to grok version number from Snort output')
