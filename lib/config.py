@@ -1,3 +1,4 @@
+import os
 from time import strftime, localtime
 from tempfile import gettempdir
 
@@ -136,10 +137,6 @@ class Config(object):
 
         # Non-critical checks
 
-        # Setup the temp path if not set (not a failure)
-        if not self.defined('temp_path'):
-            self.temp_path = gettempdir()
-
         # If additional local_rules are not set, default to empty list
         # Otherwise create a list from the value
         if not self.defined('local_rules'):
@@ -166,6 +163,39 @@ class Config(object):
             self.blocklist_urls = []
         else:
             self.blocklist_urls = list_from_str(self.blocklist_urls)
+
+        # Validate file and path existence (where applicable)
+
+        # Ensure the all paths/files in local_rules exist
+        if self.defined('local_rules'):
+            for local_rule in self.local_rules:
+                if not os.path.exists(local_rule):
+                    log.warning(f'`local_rules` is configured, but at least one entry does not exist: {local_rule}')
+
+            # If warnings aren't fatal, we'll unset to try just `snort` in $PATH
+            self.snort_path = None
+
+        # Ensure the temp dir exists and is a directory
+        if self.defined('temp_path') and not os.path.isdir(self.temp_path):
+            log.warning(f'`temp_path` is configured but is not a directory: {self.temp_path}')
+
+            # If warnings aren't fatal, we'll unset to use gettempdir() next
+            self.temp_path = None
+
+        # Setup the temp path if not set (not a failure)
+        if not self.defined('temp_path'):
+            self.temp_path = gettempdir()
+
+        # Ensure the Snort bin exists and is a file
+        if self.defined('snort_path') and not os.path.isfile(self.snort_path):
+            log.warning(f'`snort_path` is configured but Snort binary was not found: {self.snort_path}')
+
+            # If warnings aren't fatal, we'll unset to try just `snort` in $PATH
+            self.snort_path = None
+
+        # Ensure the SO rule dir exists and is a directory
+        if self.defined('sorule_path') and not os.path.isdir(self.sorule_path):
+            log.warning(f'`sorule_path` is configured but is not a directory: {self.sorule_path}')
 
         # Critical checks below
 
