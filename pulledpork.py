@@ -905,6 +905,11 @@ def get_snort_version(snort_path=None):
 
     log.debug("Determining Snort version from Snort binary.")
 
+    # Check for binary in provided path
+    if snort_path is not None:
+        if not isfile(snort_path):
+            log.error(f'`snort_path` is provided in config, but binary does not exist: {snort_path}')
+
     # Default to just "snort" if no path provided
     snort_path = snort_path or 'snort'
 
