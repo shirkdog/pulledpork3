@@ -236,7 +236,7 @@ def main():
 
         elif ruleset_name == 'SNORT_REGISTERED':
 
-            log.verbose('Processing Registered ruleset')
+            log.info('Processing Registered ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
 
             # process text rules
@@ -297,7 +297,7 @@ def main():
 
         elif ruleset_name == 'SNORT_LIGHTSPD':
 
-            log.verbose('Processing LightSPD ruleset')
+            log.info('Processing LightSPD ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
 
             lightspd_rules = Rules()
