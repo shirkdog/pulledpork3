@@ -405,19 +405,21 @@ def main():
             log.warning("Unknown ruleset archive folder recieved.")
             # TODO: non-standard ruleset, we need to figure it out
 
-    log.verbose('Completed processing all rulesets before local rulesets:')
-    log.verbose(f'* Collected Rules: {all_new_rules}')
-    log.verbose('* Collected Policies:')
-    for policy in all_new_policies:
-        log.verbose(f'    - {policy}')
+    if len(conf.local_rules):
 
-    for path in conf.local_rules:
-        local_rules = Rules(path)
-        log.info(f'loaded local rules file: {local_rules} from {path}')
-        all_new_rules.extend(local_rules)
+        log.verbose('Completed processing all rulesets before local rulesets:')
+        log.verbose(f'* Collected Rules: {all_new_rules}')
+        log.verbose('* Collected Policies:')
+        for policy in all_new_policies:
+            log.verbose(f'    - {policy}')
 
-        # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
-        all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
+        for path in conf.local_rules:
+            local_rules = Rules(path)
+            log.info(f'loaded local rules file: {local_rules} from {path}')
+            all_new_rules.extend(local_rules)
+
+            # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
+            all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
 
     log.info('Completed processing all rulesets and local rules:')
     log.info(f'* Collected Rules: {all_new_rules}')
