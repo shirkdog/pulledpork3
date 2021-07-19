@@ -209,12 +209,12 @@ def main():
     for ruleset_name, ruleset_path in extracted_rulesets:
 
         log.debug('---------------------------------')
-        log.debug("Working on Ruleset: " + ruleset_name + ' - ' + ruleset_path)
 
         # determine ruleset type:
         if ruleset_name == 'SNORT_COMMUNITY':
 
-            log.verbose('Processing Community ruleset')
+            log.info('Processing Community ruleset')
+            log.vervose(f' - Ruleset path: {ruleset_path}')
 
             # only simple rules to worry about
             # community rules have an extra folder to delve into
@@ -222,15 +222,14 @@ def main():
 
             # todo: wrap next line in try/catch
             community_rules = Rules(rule_path, conf.ignored_files)
-            log.verbose(f'\tLoaded community rules: {community_rules}')
 
             # Generate the community policy from the rules
             # commmunity rules don't come with a policy file, so create one (in case the rule_mode = policy)
             community_policy = community_rules.policy_from_state(conf.ips_policy)
 
             log.verbose('Finished processing Community ruleset')
-            log.verbose(f'* Community Rules: {community_rules}')
-            log.verbose(f'* Community Policy: {community_policy}')
+            log.verbose(f' - Community Rules:  {community_rules}')
+            log.verbose(f' - Community Policy:  {community_policy}')
 
             all_new_rules.extend(community_rules)
             all_new_policies.extend(community_policy)
@@ -238,22 +237,23 @@ def main():
         elif ruleset_name == 'SNORT_REGISTERED':
 
             log.verbose('Processing Registered ruleset')
+            log.vervose(f' - Ruleset path: {ruleset_path}')
 
             # process text rules
             text_rules_path = join(ruleset_path, 'rules')
             registered_rules = Rules(text_rules_path, conf.ignored_files)
             registered_policies = Policies(text_rules_path)
 
-            log.verbose(f'* Text Rules:: {registered_rules}')
-            log.verbose(f'* Text Policies:: {registered_policies}')
+            log.verbose(f' - Text Rules:  {registered_rules}')
+            log.verbose(f' - Text Policies:  {registered_policies}')
 
             # process builtin rules
             builtin_rules_path = join(ruleset_path, 'builtins')
             builtin_rules = Rules(builtin_rules_path)
             builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f'* Builtin Rules:: {builtin_rules}')
-            log.verbose(f'* Builtin Policies:: {builtin_policies}')
+            log.verbose(f' - Builtin Rules:  {builtin_rules}')
+            log.verbose(f' - Builtin Policies:  {builtin_policies}')
 
             registered_rules.extend(builtin_rules)
             registered_policies.extend(builtin_policies)
@@ -276,8 +276,8 @@ def main():
                 so_rules = Rules(so_rules_path)
                 so_policies = Policies(so_rules_path)
 
-                log.verbose(f'* SO Rules:: {so_rules}')
-                log.verbose(f'* SO Policies:: {so_policies}')
+                log.verbose(f' - SO Rules:  {so_rules}')
+                log.verbose(f' - SO Policies:  {so_policies}')
 
                 registered_rules.extend(so_rules)
                 registered_policies.extend(so_policies)
@@ -289,8 +289,8 @@ def main():
             registered_rules.apply_policy(registered_policies[conf.ips_policy])
 
             log.verbose('Finished processing Registered ruleset')
-            log.verbose(f'* Registered Rules: {registered_rules}')
-            log.verbose(f'* Registered Policies: {registered_policies}')
+            log.verbose(f' - Registered Rules:  {registered_rules}')
+            log.verbose(f' - Registered Policies:  {registered_policies}')
 
             all_new_rules.extend(registered_rules)
             all_new_policies.extend(registered_policies)
@@ -298,6 +298,7 @@ def main():
         elif ruleset_name == 'SNORT_LIGHTSPD':
 
             log.verbose('Processing LightSPD ruleset')
+            log.vervose(f' - Ruleset path: {ruleset_path}')
 
             lightspd_rules = Rules()
             lightspd_policies = Policies()
@@ -358,8 +359,8 @@ def main():
                     lightspd_rules = Rules(so_rules_path)
                     lightspd_policies = Policies(so_rules_path)
 
-                log.verbose(f'* SO Rules processed: {lightspd_rules}')
-                log.verbose(f'* SO Policies processed: {lightspd_policies}')
+                log.verbose(f' - SO Rules processed:  {lightspd_rules}')
+                log.verbose(f' - SO Policies processed:  {lightspd_policies}')
 
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
@@ -369,8 +370,8 @@ def main():
             lightspd_text_rules = Rules(text_rules_path, conf.ignored_files)
             lightspd_text_policies = Policies(text_rules_path)
 
-            log.verbose(f'* text Rules processed: {lightspd_text_rules}')
-            log.verbose(f'* text Policies processed: {lightspd_text_policies}')
+            log.verbose(f' - text Rules processed:  {lightspd_text_rules}')
+            log.verbose(f' - text Policies processed:  {lightspd_text_policies}')
 
             lightspd_rules.extend(lightspd_text_rules)
             lightspd_policies.extend(lightspd_text_policies)
@@ -382,8 +383,8 @@ def main():
             lightspd_builtin_rules = Rules(builtin_rules_path, conf.ignored_files)
             lightspd_builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f'* builtin Rules processed: {lightspd_builtin_rules}')
-            log.verbose(f'* builtin Policies processed: {lightspd_builtin_policies}')
+            log.verbose(f' - builtin Rules processed:  {lightspd_builtin_rules}')
+            log.verbose(f' - builtin Policies processed:  {lightspd_builtin_policies}')
 
             lightspd_rules.extend(lightspd_builtin_rules)
             lightspd_policies.extend(lightspd_builtin_policies)
@@ -395,8 +396,8 @@ def main():
             lightspd_rules.apply_policy(lightspd_policies[conf.ips_policy])
 
             log.verbose('Finished processing LightSPD ruleset')
-            log.verbose(f'* LightSPD Rules: {registered_rules}')
-            log.verbose(f'* LightSPD Policies: {registered_policies}')
+            log.verbose(f' - LightSPD Rules:  {registered_rules}')
+            log.verbose(f' - LightSPD Policies:  {registered_policies}')
 
             all_new_rules.extend(lightspd_rules)
             all_new_policies.extend(lightspd_policies)
@@ -408,8 +409,8 @@ def main():
     if len(conf.local_rules):
 
         log.verbose('Completed processing all rulesets before local rulesets:')
-        log.verbose(f'* Collected Rules: {all_new_rules}')
-        log.verbose('* Collected Policies:')
+        log.verbose(f' - Collected Rules:  {all_new_rules}')
+        log.verbose(' - Collected Policies:')
         for policy in all_new_policies:
             log.verbose(f'    - {policy}')
 
@@ -422,13 +423,13 @@ def main():
             all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
 
     log.info('Completed processing all rulesets and local rules:')
-    log.info(f'* Collected Rules: {all_new_rules}')
-    log.info('* Collected Policies:')
+    log.info(f' - Collected Rules:  {all_new_rules}')
+    log.info(' - Collected Policies:')
     for policy in all_new_policies:
         log.info(f'    - {policy}')
 
     # Prepare rules for output
-    log.info(f'Writing rules to: {conf.rule_path}')
+    log.info(f'Writing rules to:  {conf.rule_path}')
     header = ('#-------------------------------------------------------------------\n'
               f'#  Rules file created by {SCRIPT_NAME}  at {conf.start_time}\n'
               '#  \n'
