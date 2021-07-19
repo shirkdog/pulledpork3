@@ -244,16 +244,16 @@ def main():
             registered_rules = Rules(text_rules_path, conf.ignored_files)
             registered_policies = Policies(text_rules_path)
 
-            log.verbose(f' - Text Rules:  {registered_rules}')
-            log.verbose(f' - Text Policies:  {registered_policies}')
+            log.debug(f' - Text Rules:  {registered_rules}')
+            log.debug(f' - Text Policies:  {registered_policies}')
 
             # process builtin rules
             builtin_rules_path = join(ruleset_path, 'builtins')
             builtin_rules = Rules(builtin_rules_path)
             builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f' - Builtin Rules:  {builtin_rules}')
-            log.verbose(f' - Builtin Policies:  {builtin_policies}')
+            log.debug(f' - Builtin Rules:  {builtin_rules}')
+            log.debug(f' - Builtin Policies:  {builtin_policies}')
 
             registered_rules.extend(builtin_rules)
             registered_policies.extend(builtin_policies)
@@ -276,14 +276,14 @@ def main():
                 so_rules = Rules(so_rules_path)
                 so_policies = Policies(so_rules_path)
 
-                log.verbose(f' - SO Rules:  {so_rules}')
-                log.verbose(f' - SO Policies:  {so_policies}')
+                log.debug(f' - SO Rules:  {so_rules}')
+                log.debug(f' - SO Policies:  {so_policies}')
 
                 registered_rules.extend(so_rules)
                 registered_policies.extend(so_policies)
 
             log.verbose(f'Preparing to apply policy {conf.ips_policy} to Registered rules')
-            log.verbose(f' - Registered rules before policy application: {registered_rules}')
+            log.debug(f' - Registered rules before policy application: {registered_rules}')
 
             # apply the policy to these rules
             registered_rules.apply_policy(registered_policies[conf.ips_policy])
@@ -309,7 +309,7 @@ def main():
                 json_manifest_file = join(ruleset_path, 'lightspd', 'manifest.json')
 
                 # load json manfiest file to identify .so rules location
-                log.verbose('Processing json manifest file ' + json_manifest_file)
+                log.debug('Processing json manifest file ' + json_manifest_file)
                 with open(json_manifest_file) as f:
                     manifest = load(f)
 
@@ -359,8 +359,8 @@ def main():
                     lightspd_rules = Rules(so_rules_path)
                     lightspd_policies = Policies(so_rules_path)
 
-                log.verbose(f' - SO Rules processed:  {lightspd_rules}')
-                log.verbose(f' - SO Policies processed:  {lightspd_policies}')
+                log.debug(f' - SO Rules processed:  {lightspd_rules}')
+                log.debug(f' - SO Policies processed:  {lightspd_policies}')
 
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
@@ -370,8 +370,8 @@ def main():
             lightspd_text_rules = Rules(text_rules_path, conf.ignored_files)
             lightspd_text_policies = Policies(text_rules_path)
 
-            log.verbose(f' - text Rules processed:  {lightspd_text_rules}')
-            log.verbose(f' - text Policies processed:  {lightspd_text_policies}')
+            log.debug(f' - text Rules processed:  {lightspd_text_rules}')
+            log.debug(f' - text Policies processed:  {lightspd_text_policies}')
 
             lightspd_rules.extend(lightspd_text_rules)
             lightspd_policies.extend(lightspd_text_policies)
@@ -383,14 +383,14 @@ def main():
             lightspd_builtin_rules = Rules(builtin_rules_path, conf.ignored_files)
             lightspd_builtin_policies = Policies(builtin_rules_path)
 
-            log.verbose(f' - builtin Rules processed:  {lightspd_builtin_rules}')
-            log.verbose(f' - builtin Policies processed:  {lightspd_builtin_policies}')
+            log.debug(f' - builtin Rules processed:  {lightspd_builtin_rules}')
+            log.debug(f' - builtin Policies processed:  {lightspd_builtin_policies}')
 
             lightspd_rules.extend(lightspd_builtin_rules)
             lightspd_policies.extend(lightspd_builtin_policies)
 
             log.verbose(f'Preparing to apply policy {conf.ips_policy} to LightSPD rules')
-            log.verbose(f' - LightSPD rules before policy application:  {lightspd_rules}')
+            log.debug(f' - LightSPD rules before policy application:  {lightspd_rules}')
 
             # apply the policy to these rules
             lightspd_rules.apply_policy(lightspd_policies[conf.ips_policy])
