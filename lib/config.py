@@ -172,9 +172,6 @@ class Config(object):
                 if not os.path.exists(local_rule):
                     log.warning(f'`local_rules` is configured, but at least one entry does not exist: {local_rule}')
 
-            # If warnings aren't fatal, we'll unset to try just `snort` in $PATH
-            self.snort_path = None
-
         # Ensure the temp dir exists and is a directory
         if self.defined('temp_path') and not os.path.isdir(self.temp_path):
             log.warning(f'`temp_path` is configured but is not a directory: {self.temp_path}')
@@ -195,7 +192,7 @@ class Config(object):
 
         # Ensure the SO rule dir exists and is a directory
         if self.defined('sorule_path') and not os.path.isdir(self.sorule_path):
-            log.warning(f'`sorule_path` is configured but is not a directory: {self.sorule_path}')
+            log.error(f'`sorule_path` is configured but is not a directory: {self.sorule_path}')
 
         # Critical checks below
 
