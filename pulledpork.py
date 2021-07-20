@@ -583,13 +583,13 @@ def flying_pig_banner():
     print(f"""
     https://github.com/shirkdog/pulledpork3
       _____ ____
-     `----,\\    )
-      `--==\\\\  /    {VERSION_STR} - {TAGLINE}
+     `----,\\    )   {VERSION_STR}
+      `--==\\\\  /    {TAGLINE}
        `--==\\\\/
      .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk
   @_/        /  66\\_  and the PulledPork Team!
     |    \\   \\   _(\")
-     \\   /-| ||'--'  Rules give me wings!
+     \\   /-| ||'--'   Rules give me wings!
       \\_\\  \\_\\\\
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~""")
 
@@ -904,11 +904,6 @@ def get_snort_version(snort_path=None):
     '''
 
     log.debug("Determining Snort version from Snort binary.")
-
-    # Check for binary in provided path
-    if snort_path is not None:
-        if not isfile(snort_path):
-            log.error(f'`snort_path` is provided in config, but binary does not exist: {snort_path}')
 
     # Default to just "snort" if no path provided
     snort_path = snort_path or 'snort'
