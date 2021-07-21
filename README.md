@@ -3,7 +3,7 @@ PulledPork3
 
 Pulled Pork for Snort3 rule management (Everything is better smoked)
 
-Find us the Snort Discord [https://discord.gg/Sdgsg8MtQQ](https://discord.gg/Sdgsg8MtQQ) or on Libera.Chat (IRC) [`#pulledpork`](https://libera.chat/guides/connect) 
+Find us on the Snort Discord ([https://discord.gg/Sdgsg8MtQQ](https://discord.gg/Sdgsg8MtQQ)) or on Libera.Chat (IRC) in [`#pulledpork`](https://libera.chat/guides/connect) 
 
 Copyright (C) 2021 Noah Dietrich, Colin Grady, Michael Shirk and the PulledPork Team!
 
