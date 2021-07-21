@@ -2,7 +2,7 @@
 '''
 pulledpork3 v(whatever it says below!)
 
-Copyright (C) 2021 Noah Dietrich, Michael Shirk and the PulledPork Team!
+Copyright (C) 2021 Noah Dietrich, Colin Grady, Michael Shirk and the PulledPork Team!
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -580,13 +580,14 @@ def flying_pig_banner():
     '''
 
     # For now simple printing, will need to clean this up
+    # Pig art by JJ Cummings
     print(f"""
     https://github.com/shirkdog/pulledpork3
       _____ ____
      `----,\\    )   {VERSION_STR}
       `--==\\\\  /    {TAGLINE}
        `--==\\\\/
-     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Michael Shirk
+     .-~~~~-.Y|\\\\_  Copyright (C) 2021 Noah Dietrich, Colin Grady, Michael Shirk
   @_/        /  66\\_  and the PulledPork Team!
     |    \\   \\   _(\")
      \\   /-| ||'--'   Rules give me wings!
