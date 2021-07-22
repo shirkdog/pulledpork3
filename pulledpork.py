@@ -34,14 +34,10 @@ except ImportError:
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
 from tarfile import open as open_tar        # to extract tgz ruleset file
-from urllib.parse import urlsplit           # get filename from url
-
-# Third-party libraries
-import requests
 
 # Our PulledPork3 internal libraries
 from lib import config, logger
-from lib.snort import Blocklist, Rules, Policies
+from lib.snort import Blocklist, Rules, Policies, RulesArchive
 
 
 # -----------------------------------------------------------------------------
@@ -56,8 +52,8 @@ VERSION_STR = f'{SCRIPT_NAME} v{__version__}'
 
 # URLs for supported rulesets (replace <version> and <oinkcode> when downloading)
 RULESET_URL_SNORT_COMMUNITY = 'https://snort.org/downloads/community/snort3-community-rules.tar.gz'
-RULESET_URL_SNORT_REGISTERED = 'https://snort.org/rules/snortrules-snapshot-<VERSION>.tar.gz?oinkcode=<OINKCODE>'
-RULESET_URL_SNORT_LIGHTSPD = 'https://snort.org/rules/Talos_LightSPD.tar.gz?oinkcode=<OINKCODE>'
+RULESET_URL_SNORT_REGISTERED = 'https://snort.org/rules/snortrules-snapshot-<VERSION>.tar.gz'
+RULESET_URL_SNORT_LIGHTSPD = 'https://snort.org/rules/Talos_LightSPD.tar.gz'
 
 # TODO: Support for the ET Rulesets has not yet been implemented
 # RULESET_URL_ET_OPEN = 'https://rules.emergingthreats.net/open/snort-<VERSION>/emerging.rules.tar.gz'
@@ -157,43 +153,40 @@ def main():
 
     if conf.args.file:
         log.debug("Using one file for ruleset source (not downloading rulesets): " + conf.args.file)
-        # determine ruleset type from filename
-        if 'snort3-community-rules' in conf.args.file:
-            local_rulesets.append(('SNORT_COMMUNITY', conf.args.file))
-        elif 'snortrules-snapshot-' in conf.args.file:
-            local_rulesets.append(('SNORT_REGISTERED', conf.args.file))
-        elif 'Talos_LightSPD' in conf.args.file:
-            local_rulesets.append(('SNORT_LIGHTSPD', conf.args.file))
-        else:
-            local_rulesets.append(('UNKNOWN', conf.args.file))
+        load_ruleset(local_rulesets, filename=conf.args.file)
 
     elif conf.args.folder:
         log.debug("Using all files for ruleset source (not downloading) from: " + conf.args.folder)
         for path in listdir(conf.args.folder):
             full_path = join(conf.args.folder, path)
             if isfile(full_path) and (full_path.endswith('tar.gz') or (full_path.endswith('tgz'))):
-                # determine ruleset type from filename
-                if 'snort3-community-rules' in full_path:
-                    local_rulesets.append(('SNORT_COMMUNITY', full_path))
-                elif 'snortrules-snapshot-' in full_path:
-                    local_rulesets.append(('SNORT_REGISTERED', full_path))
-                elif 'Talos_LightSPD' in full_path:
-                    local_rulesets.append(('SNORT_LIGHTSPD', full_path))
-                else:
-                    local_rulesets.append(('UNKNOWN', full_path))
-    else:
-        # create list of ruleset URLS from the various RULESETs provided
-        ruleset_urls = determine_ruleset_urls()
+                load_ruleset(local_rulesets, filename=full_path)
 
-        # Download rulesets to temp directory
-        # local_rulesets.append( download_rulesets(ruleset_urls) )
-        local_rulesets = download_rulesets(ruleset_urls)
+    else:
+        log.debug("Downloading rulesets from Internet")
+
+        if conf.community_ruleset:
+            load_ruleset(local_rulesets, url=RULESET_URL_SNORT_COMMUNITY)
+
+        if conf.registered_ruleset:
+            version = sub(r'[^a-zA-Z0-9]', '', conf.snort_version)  # version in URL is alphanumeric only
+            reg_url = RULESET_URL_SNORT_REGISTERED.replace('<VERSION>', version)
+            load_ruleset(local_rulesets, url=reg_url, oinkcode=conf.oinkcode)
+
+        if conf.lightspd_ruleset:
+            load_ruleset(local_rulesets, url=RULESET_URL_SNORT_LIGHTSPD, oinkcode=conf.oinkcode)
+
+    if not len(local_rulesets):
+        log.error('No rulesets were loaded')
 
     # extract rulesets to folder (tupple with ID, full path of folders for extracted rulesets)
-    extracted_rulesets = untar_rulesets(local_rulesets)
+    untar_rulesets(local_rulesets, conf.tempdir)
+
+    # TEMPORARY to be like-for-like with replaced code
+    extracted_rulesets = [(rs.ruleset, rs.extracted_path) for rs in local_rulesets]
 
     if not extracted_rulesets:
-        log.warning("No Extracted Ruleset folders found.")
+        log.error("No Extracted Ruleset folders found.")
 
     # -----------------------------------------------------------------------------
     # PROCESS RULESETS HERE
@@ -491,7 +484,7 @@ def main():
         if conf.snort_blocklist:
             log.verbose('Downloading the Snort blocklist')
             try:
-                new_blocklist.download_url(SNORT_BLOCKLIST_URL)
+                new_blocklist.load_url(SNORT_BLOCKLIST_URL)
             except Exception as e:
                 log.warning(f'Unable to download the Snort blocklist: {e}')
 
@@ -499,7 +492,7 @@ def main():
         if conf.et_blocklist:
             log.verbose('Downloading the ET blocklist')
             try:
-                new_blocklist.download_url(ET_BLOCKLIST_URL)
+                new_blocklist.load_url(ET_BLOCKLIST_URL)
             except Exception as e:
                 log.warning(f'Unable to download the ET blocklist: {e}')
 
@@ -507,7 +500,7 @@ def main():
         for bl_url in conf.blocklist_urls:
             log.verbose(f'Downloading the blocklist: {bl_url}')
             try:
-                new_blocklist.download_url(bl_url)
+                new_blocklist.load_url(bl_url)
             except Exception as e:
                 log.warning(f'Unable to download blocklist: {e}')
 
@@ -723,129 +716,52 @@ def print_operational_settings():
     log.verbose('------------------------------------------------------------')
 
 
-def determine_ruleset_urls():
+def load_ruleset(rulesets, filename=None, url=None, oinkcode=None):
     '''
-    return a list of full URLs to download rulesets (TGZ) from
-    in: nothing (pulls info from global config )
-    out: list of entries, each entry is a tuple (source_ID, url)
-         source_ID is to tell us where we got the entry
+    Load the specified ruleset, locally or from URL, and add to the rulesets list
     '''
 
-    urls = []
+    log.verbose(f'Loading rules archive:\n - Source: {filename or url}')
 
-    if conf.community_ruleset:
-        u = ('SNORT_COMMUNITY', RULESET_URL_SNORT_COMMUNITY)
-        urls.append(u)
+    # Attempt to load the file and get the type
+    try:
+        rules_archive = RulesArchive(filename=filename, url=url, oinkcode=oinkcode)
+        ruleset_type = rules_archive.ruleset
+    except Exception as e:
+        log.warning(f' - Unable to load rules archive: {e}')
+        return
+    log.verbose(f' - Loaded as: {ruleset_type}')
 
-    if conf.registered_ruleset:
-        r = RULESET_URL_SNORT_REGISTERED.replace('<OINKCODE>', conf.oinkcode)
-        version = sub(r'[^a-zA-Z0-9]', '', conf.snort_version)  # version in URL is alphanumeric only
-        r = r.replace('<VERSION>', version)
-        u = ('SNORT_REGISTERED', r)
-        urls.append(u)
-
-    if conf.lightspd_ruleset:
-        r = RULESET_URL_SNORT_LIGHTSPD.replace('<OINKCODE>', conf.oinkcode)
-        u = ('SNORT_LIGHTSPD', r)
-        urls.append(u)
-
-    # todo: other rulesets by URL
-
-    # todo: ET rulesets
-
-    log.verbose('Returning ' + str(len(urls)) + ' ruleset URLs:')
-    for url in urls:
-        log.verbose("\t" + url[0] + " - " + url[1])
-    return urls
+    # Appends the loaded ruleset
+    rulesets.append(rules_archive)
 
 
-def download_rulesets(urls):
-    '''
-    Download ruleset archives (tgz) from online
-        in: list of tuples, (ID, url)
-        out: list of tuples, (id, full path of downloaded tgz files)
-    '''
-
-    downloaded_rulesets_dir = conf.tempdir + sep + 'downloaded_rulesets' + sep
-    # extracted_rulesets_dir = conf.tempdir + sep + 'extracted_rulesets' +sep
-
-    log.verbose('Preparing to download the following rulesets to temp directory: ' + downloaded_rulesets_dir)
-    for u in urls:
-        log.verbose("\t" + u[0] + " - " + u[1])
-
-    ruleset_archive_files = []   # array of tuples of ID and full path of downloaded tgz archive rulesets
-
-    # Download and extract rulesets
-    # todo: check if empty & warn (not fail)
-    # todo: if url doesn't contain filename, dtermine from server
-    # https://stackoverflow.com/questions/2795331/python-download-without-supplying-a-filename
-    for url in urls:
-        log.debug("-----------------------------------------")
-        filename = urlsplit(url[1]).path.split("/")[-1]
-
-        log.info('Downloading ruleset file: ' + filename + ' from: ' + url[1])
-
-        r = requests.get(url[1])
-        r.raise_for_status()
-
-        # Retrieve HTTP meta-data
-        # print("\t" + r.status_code)
-        # print("\t" + r.headers['content-type'])
-        # print("\t" + r.encoding)
-
-        log.info('Writing ruleset file to disk: ' + downloaded_rulesets_dir + filename)
-
-        with open(downloaded_rulesets_dir + filename, 'wb') as f:
-            f.write(r.content)
-
-        # create list of rulesets
-        t = (url[0], downloaded_rulesets_dir + filename)
-        ruleset_archive_files.append(t)
-
-    return ruleset_archive_files
-
-
-def untar_rulesets(files):
+def untar_rulesets(files, target_dir):
     '''
     untar archives to folder,
-        in: Tuple, ID,  full file paths of archive files (tgz)
-        out: tuple, ID, full path of extracted folders (tgz)
     '''
 
-    extracted_rulesets_dir = conf.tempdir + sep + 'extracted_rulesets' + sep
+    target_dir = join(target_dir, 'extracted_rulesets')
 
-    folder_names = []   # the list of folder names of extracted tgz files (full path)
-
-    log.verbose("Preparing to extract the following ruleset tarball files to temp directory: \n\t(tempdir) " + extracted_rulesets_dir)
-
-    for f in files:
-        log.verbose("\t(ruleset tarball) " + str(f))
-        # log.verbose("\t(ruleset tarball) " + f[1])
+    log.verbose("Preparing to extract the following ruleset tarball files to temp directory:\n - tempdir: " + target_dir)
 
     for file in files:
 
         # extract TGZ files
-        log.debug('Working on file: ' + file[1])
+        log.debug('Working on file: ' + file.filename)
 
-        filename = basename(file[1])
         # get the filename
-        if filename.endswith('.tgz'):
-            out_foldername = extracted_rulesets_dir + filename[:-4] + sep
-        elif filename.endswith('.tar.gz'):
-            out_foldername = extracted_rulesets_dir + filename[:-7] + sep
+        if file.filename.endswith('.tgz'):
+            out_foldername = join(target_dir, file.filename[:-4])
+        elif file.filename.endswith('.tar.gz'):
+            out_foldername = join(target_dir, file.filename[:-7])
         else:
-            out_foldername = extracted_rulesets_dir + filename + sep
+            out_foldername = join(target_dir, file.filename)
 
         log.debug("Out_foldername is: " + out_foldername)
 
-        log.verbose('Extracting tgz file: ' + file[1] + " to " + out_foldername)
-        # todo: error check: https://docs.python.org/3/library/tarfile.html#tarfile.open
-        tgz = open_tar(file[1])
-        tgz.extractall(out_foldername)  # specify which folder to extract to
-        tgz.close()
-        folder_names.append((file[0], out_foldername))
-
-    return folder_names
+        log.verbose('Extracting tgz file: ' + file.filename + " to " + out_foldername)
+        file.extract(out_foldername)
 
 
 def print_environment(gc):

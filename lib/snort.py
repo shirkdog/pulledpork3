@@ -1,5 +1,7 @@
+import io
 import os
 import re
+import tarfile
 
 import requests
 
@@ -22,6 +24,26 @@ RULE_REGEX = re.compile(r'^(#\s*)?(\w+)\s(.*\(.+sid:(\d+);.+\))\s*$')
 RULE_GID_REGEX = re.compile(r'gid:(\d+);')
 RULE_REV_REGEX = re.compile(r'rev:(\d+);')
 POLICY_RULE_REGEX = re.compile(r'^(\w+) \(gid:(\d+?); sid:(\d+?); (\w+);\)$')
+
+# Ruleset file lists to check for RulesArchive ruleset guessing
+RULESET_COMMUNITY_FILE_CHECKS = [
+    'snort3-community-rules/snort3-community.rules',
+    'snort3-community-rules/sid-msg.map'
+]
+RULESET_REGISTERED_FILE_CHECKS = [
+    'builtins/builtins.rules',
+    'etc/snort_defaults.lua',
+    'rules/rulestates-balanced-ips.states',
+    'so_rules/includes.rules',
+    'so_rules/src'
+]
+RULESET_LIGHTSPD_FILE_CHECKS = [
+    'lightspd/manifest.json',
+    'lightspd/builtins/',
+    'lightspd/rules/',
+    'lightspd/modules/src/Makefile',
+    'lightspd/policies/common/'
+]
 
 
 ################################################################################
@@ -57,7 +79,7 @@ class Blocklist(object):
 
         # Are we loading from a URL?
         if url:
-            self.download_url(url)
+            self.load_url(url)
 
     def __repr__(self):
         return f'Blocklist(lines:{len(self)})'
@@ -133,7 +155,7 @@ class Blocklist(object):
         block = self._lines[line]
         return block
 
-    def extend(self, blocklist, source='UNDEFINED'):
+    def extend(self, blocklist, source=None):
         '''
         Extend this blocklist from another
 
@@ -155,9 +177,15 @@ class Blocklist(object):
         if isinstance(blocklist, str):
             blocklist = blocklist.splitlines()
         elif isinstance(blocklist, Blocklist):
+            if source is None:
+                source = 'Blocklist Object'
             blocklist = blocklist._lines.copy()
         elif not isinstance(blocklist, (list, tuple)):
             raise ValueError(f'Unexpected blocklist to apply: {blocklist}')
+
+        # Set source if not set
+        if source is None:
+            source = 'UNDEFINED'
 
         # Add a comment to indicate the source of following list entries
         if len(blocklist):
@@ -190,16 +218,16 @@ class Blocklist(object):
         '''
         self._lines.clear()
 
-    def download_url(self, blocklist_url):
+    def load_url(self, blocklist_url):
         '''
-        Download a blocklist from a URL and add it to this blocklist
+        Load a blocklist from a URL and add it to this blocklist
 
         Example:
         >>> bl = Blocklist()
         >>> bl
         Blocklist(lines:0)
         >>>
-        >>> bl.download_url('https://snort.org/downloads/ip-block-list')
+        >>> bl.load_url('https://snort.org/downloads/ip-block-list')
         >>> bl
         Blocklist(lines:1495)
         '''
@@ -1292,3 +1320,154 @@ class Policies(object):
         # Wut?
         else:
             raise ValueError(f'Not a recognized Policy or Polcies object: {other_thing}')
+
+
+################################################################################
+# RulesArchive - Helper for loads, saving, and extracting rules archives
+################################################################################
+
+class RulesArchive(object):
+
+    def __init__(self, ruleset=None, filename=None, url=None, oinkcode=None):
+        '''
+        Setup the new rules archive
+        '''
+
+        # Validate only one set
+        if filename and url:
+            raise ValueError('Only one -- `filename` or `url` -- may be used at once')
+
+        # Setup the archive
+        self._data = None
+        self._ruleset = ruleset
+        self.source = None
+        self.filename = None
+        self.extracted_path = None
+
+        # Load the archive if we have one
+        if filename:
+            self.load_file(filename)
+        if url:
+            self.load_url(url, oinkcode)
+
+    def __repr__(self):
+        return f'RulesArchive(ruleset:{self.ruleset})'
+
+    @property
+    def ruleset(self):
+        '''
+        Attempt to identify the ruleset archive, or return
+        what we already have
+        '''
+
+        # If we haven't yet determined a ruleset, find one
+        if not self._ruleset:
+
+            # Nothing loaded yet
+            if not self.filename:
+                return 'UNKNOWN'
+
+            # Try the easy stuff first
+            elif self.filename == 'snort3-community-rules.tar.gz':
+                self._ruleset = 'SNORT_COMMUNITY'
+            elif self.filename.startswith('snortrules-snapshot-'):
+                self._ruleset = 'SNORT_REGISTERED'
+            elif self.filename == 'Talos_LightSPD.tar.gz':
+                self._ruleset = 'SNORT_LIGHTSPD'
+
+            # Need the ruleset to be downloaded to perform additional checks
+            elif not self._data:
+                return 'UNKNOWN'
+
+            # Harder tries
+            else:
+
+                # Get the filename list from the downloaded file
+                tarobj = io.BytesIO(self._data)
+                with tarfile.open(fileobj=tarobj) as fh:
+                    filenames = fh.getnames()
+
+                    # These checks kinda suck, but...
+                    if all(x in filenames for x in RULESET_COMMUNITY_FILE_CHECKS):
+                        self._ruleset = 'SNORT_COMMUNITY'
+                    elif all(x in filenames for x in RULESET_REGISTERED_FILE_CHECKS):
+                        self._ruleset = 'SNORT_REGISTERED'
+                    elif all(x in filenames for x in RULESET_REGISTERED_FILE_CHECKS):
+                        self._ruleset = 'SNORT_LIGHTSPD'
+
+                    # Have no idea
+                    else:
+                        self._ruleset = 'UNKNOWN'
+
+        # Return the ruleset
+        return self._ruleset
+
+    def load_file(self, rules_path):
+        '''
+        Load a archive file
+        '''
+
+        # Save the bits
+        self.source = rules_path
+        self.filename = os.path.basename(rules_path)
+
+        # Open and read the file into _data
+        with open(rules_path, 'rb') as fh:
+            self._data = fh.read()
+
+    def load_url(self, rules_url, oinkcode=None):
+        '''
+        Load the rules file from the URL
+        '''
+
+        # Save the bits
+        self.source = rules_url
+        self.filename = os.path.basename(rules_url)
+
+        # Compose the parameters, adding oinkcode if requested
+        params = {}
+        if oinkcode is not None:
+            params['oinkcode'] = oinkcode
+
+        # Download the URL, and check response status?
+        resp = requests.get(rules_url, params=params)
+        resp.raise_for_status()
+
+        # Save the downloaded contents
+        self._data = resp.content
+
+    def write_file(self, target_path, filename=None):
+        '''
+        Save the archive to target path
+        '''
+
+        # Validate we've downloaded the URL
+        if not self._data:
+            raise ValueError('Rules archive has not been loaded')
+
+        # If no filename is provided, use the URL filename
+        filename = filename or self.filename
+        target_file = os.path.join(target_path, filename)
+
+        # Write the downloaded data to a file on disk
+        with open(target_file, 'wb') as fh:
+            fh.write(self._data)
+
+    def extract(self, target_path):
+        '''
+        Extract the rules archive to a target path
+        '''
+
+        # Validate we've downloaded the URL
+        if not self._data:
+            raise ValueError('Rules archive has not been loaded')
+
+        # Setup a fileobj from the downloaded data
+        tarobj = io.BytesIO(self._data)
+
+        # Extract the data to disk
+        with tarfile.open(fileobj=tarobj) as fh:
+            fh.extractall(target_path)
+
+        # Save the path where it was extracted
+        self.extracted_path = target_path
