@@ -171,7 +171,7 @@ def main():
         except Exception as e:
             log.warning(f'Unable to load rules archive: {e}')
             return
-        log.verbose(f' - Loaded as: {ruleset_type}')
+        log.verbose(f' - Loaded as: {ruleset_type.value}')
 
         # Appends the loaded ruleset
         loaded_rulesets.append(rules_archive)
