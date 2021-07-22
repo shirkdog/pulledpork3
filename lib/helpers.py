@@ -60,7 +60,7 @@ class WorkingDirectory(object):
         Create the directory structure we'll be using
         '''
 
-        log.debug(f'Setting up the working directory structure in: {self.path}')
+        log.verbose(f'Setting up the working directory structure in: {self.path}')
 
         # Create all the directories
         try:
@@ -71,4 +71,4 @@ class WorkingDirectory(object):
         except Exception as e:
             log.error(f'Setup of the working directory failed: {e}')
         else:
-            log.debug(f'Successfully setup the working directory {self.path}')
+            log.verbose(f' - Successfully setup the working directory')
