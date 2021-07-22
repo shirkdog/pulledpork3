@@ -25,7 +25,7 @@ from os import environ, listdir, mkdir, kill
 from os.path import isfile, join, sep, abspath, basename, isdir
 from platform import platform, version, uname, system, python_version, architecture
 from re import search, sub
-from shutil import rmtree, copy             # remove directory tree, python 3.4+
+from shutil import copy                     # remove directory tree, python 3.4+
 try:
     from signal import SIGHUP               # linux/bsd, not windows
 except ImportError:
@@ -33,11 +33,11 @@ except ImportError:
     pass
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
-from tarfile import open as open_tar        # to extract tgz ruleset file
 
 # Our PulledPork3 internal libraries
-from lib import config, logger
-from lib.snort import Blocklist, Rules, Policies, RulesArchive
+from lib import config, helpers, logger
+from lib.snort import (Blocklist, Rules, Policies,
+                       RulesArchive, RulesetTypes)
 
 
 # -----------------------------------------------------------------------------
@@ -136,9 +136,9 @@ def main():
     # Attempt to validate the config
     conf.validate()
 
-    # Create a temp working directory (path stored as a string)
-    conf.tempdir = get_temp_directory(conf.temp_path, conf.start_time)
-    log.verbose("Temporary working directory is: " + conf.tempdir)
+    target_dir = f'{SCRIPT_NAME}-{conf.start_time}'
+    working_dir = helpers.WorkingDirectory(conf.temp_path, target_dir, conf.delete_temp_path)
+    log.verbose(f'Working directory is: {working_dir}')
 
     # Are we missing the Snort version in config?
     if not conf.defined('snort_version'):
@@ -147,43 +147,73 @@ def main():
     # we now have all required info to run, print the configuration to screen
     print_operational_settings()
 
+    # -----------------------------------------------------------------------------
+    # LOAD RULESETS
     # Obtain the archived ruleset (tgz) files
     # either from online sources or from a local folder
-    local_rulesets = []  # list of full file paths to tgz files (local filenames or the path to the tgz files after download)
 
+    # The RulesArchive objects used for loading
+    loaded_rulesets = []
+
+    # Helper function for loading rulesets
+
+    def load_ruleset(filename=None, url=None, oinkcode=None):
+        '''
+        Load the specified ruleset, locally or from URL, and add to the rulesets list
+        '''
+
+        log.verbose(f'Loading rules archive:\n - Source: {filename or url}')
+
+        # Attempt to load the file and get the type
+        try:
+            rules_archive = RulesArchive(filename=filename, url=url, oinkcode=oinkcode)
+            ruleset_type = rules_archive.ruleset
+        except Exception as e:
+            log.warning(f'Unable to load rules archive: {e}')
+            return
+        log.verbose(f' - Loaded as: {ruleset_type}')
+
+        # Appends the loaded ruleset
+        loaded_rulesets.append(rules_archive)
+
+    # End helper
+
+    # Loading from a local file?
     if conf.args.file:
         log.debug("Using one file for ruleset source (not downloading rulesets): " + conf.args.file)
-        load_ruleset(local_rulesets, filename=conf.args.file)
+        load_ruleset(filename=conf.args.file)
 
+    # Loading from a local folder?
     elif conf.args.folder:
         log.debug("Using all files for ruleset source (not downloading) from: " + conf.args.folder)
         for path in listdir(conf.args.folder):
             full_path = join(conf.args.folder, path)
             if isfile(full_path) and (full_path.endswith('tar.gz') or (full_path.endswith('tgz'))):
-                load_ruleset(local_rulesets, filename=full_path)
+                load_ruleset(filename=full_path)
 
+    # Loading from the Snort rulesets?
     else:
         log.debug("Downloading rulesets from Internet")
 
         if conf.community_ruleset:
-            load_ruleset(local_rulesets, url=RULESET_URL_SNORT_COMMUNITY)
+            load_ruleset(url=RULESET_URL_SNORT_COMMUNITY)
 
         if conf.registered_ruleset:
             version = sub(r'[^a-zA-Z0-9]', '', conf.snort_version)  # version in URL is alphanumeric only
             reg_url = RULESET_URL_SNORT_REGISTERED.replace('<VERSION>', version)
-            load_ruleset(local_rulesets, url=reg_url, oinkcode=conf.oinkcode)
+            load_ruleset(url=reg_url, oinkcode=conf.oinkcode)
 
         if conf.lightspd_ruleset:
-            load_ruleset(local_rulesets, url=RULESET_URL_SNORT_LIGHTSPD, oinkcode=conf.oinkcode)
+            load_ruleset(url=RULESET_URL_SNORT_LIGHTSPD, oinkcode=conf.oinkcode)
 
-    if not len(local_rulesets):
+    if not len(loaded_rulesets):
         log.error('No rulesets were loaded')
 
     # extract rulesets to folder (tupple with ID, full path of folders for extracted rulesets)
-    untar_rulesets(local_rulesets, conf.tempdir)
+    extract_rulesets(loaded_rulesets, working_dir.extracted_path)
 
     # TEMPORARY to be like-for-like with replaced code
-    extracted_rulesets = [(rs.ruleset, rs.extracted_path) for rs in local_rulesets]
+    extracted_rulesets = [(rs.ruleset, rs.extracted_path) for rs in loaded_rulesets]
 
     if not extracted_rulesets:
         log.error("No Extracted Ruleset folders found.")
@@ -199,12 +229,12 @@ def main():
     all_new_rules = Rules()
     all_new_policies = Policies()
 
-    for ruleset_name, ruleset_path in extracted_rulesets:
+    for ruleset_type, ruleset_path in extracted_rulesets:
 
         log.debug('---------------------------------')
 
         # determine ruleset type:
-        if ruleset_name == 'SNORT_COMMUNITY':
+        if ruleset_type == RulesetTypes.COMMUNITY:
 
             log.info('Processing Community ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
@@ -227,7 +257,7 @@ def main():
             all_new_rules.extend(community_rules)
             all_new_policies.extend(community_policy)
 
-        elif ruleset_name == 'SNORT_REGISTERED':
+        elif ruleset_type == RulesetTypes.REGISTERED:
 
             log.info('Processing Registered ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
@@ -260,7 +290,7 @@ def main():
                 for file_name in src_files:
                     full_file_name = join(so_src_folder, file_name)
                     if isfile(full_file_name):
-                        copy(full_file_name, join(conf.tempdir, 'so_rules'))
+                        copy(full_file_name, working_dir.so_rules_path)
 
                 # get SO rule stubs
                 # todo: generate stubs if distro folder doesn't exist
@@ -288,7 +318,7 @@ def main():
             all_new_rules.extend(registered_rules)
             all_new_policies.extend(registered_policies)
 
-        elif ruleset_name == 'SNORT_LIGHTSPD':
+        elif ruleset_type == RulesetTypes.LIGHTSPD:
 
             log.info('Processing LightSPD ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
@@ -342,7 +372,7 @@ def main():
                     for file_name in src_files:
                         full_file_name = join(so_src_folder, file_name)
                         if isfile(full_file_name):
-                            copy(full_file_name, join(conf.tempdir, 'so_rules'))
+                            copy(full_file_name, working_dir.so_rules_path)
 
                     # get SO rule stub files
                     # todo: generate stubs if distro folder doesn't exist
@@ -464,10 +494,9 @@ def main():
     # copy .so rules from tempdir
     # todo: delete old rules
     if conf.defined('sorule_path'):
-        so_src_folder = join(conf.tempdir, 'so_rules')
-        src_files = listdir(so_src_folder)
+        src_files = listdir(working_dir.so_rules_path)
         for file_name in src_files:
-            full_file_name = join(so_src_folder, file_name)
+            full_file_name = join(working_dir.so_rules_path, file_name)
             if isfile(full_file_name):
                 copy(full_file_name, conf.sorule_path)
 
@@ -539,18 +568,8 @@ def main():
         # c_raise = ucrtbase['raise']
         # c_raise(some_signal)
 
-    # -----------------------------------------------------------------------------
-    # Delete temp dir
-    if not conf.delete_temp_path:
-        log.verbose("Not deleting temporary working directory: " + conf.tempdir)
-    else:
-        log.verbose("Attempting to delete temporary working directory: " + conf.tempdir)
-        try:
-            rmtree(conf.tempdir)
-        except OSError as e:
-            log.warning("Warning: Can't delete temporary working directory: " + e.filename + '.  Error is: ' + e.strerror)
-        else:
-            log.verbose("Successfully deleted temporary working directory: " + conf.tempdir)
+    # Delete the working dir (if requested)
+    del working_dir
 
     # -----------------------------------------------------------------------------
     # END Program Execution (main function)
@@ -638,7 +657,7 @@ def print_operational_settings():
         log.verbose('Oinkcode will be obfuscated in the output (this is a good thing).')
 
     # Temp dir management
-    log.verbose('Temporary working directory is: ' + conf.tempdir)
+    log.verbose('Temporary directory is: ' + conf.temp_path)
 
     if conf.delete_temp_path:
         log.verbose('Temporary working directory will be deleted at the end.')
@@ -716,35 +735,12 @@ def print_operational_settings():
     log.verbose('------------------------------------------------------------')
 
 
-def load_ruleset(rulesets, filename=None, url=None, oinkcode=None):
-    '''
-    Load the specified ruleset, locally or from URL, and add to the rulesets list
-    '''
-
-    log.verbose(f'Loading rules archive:\n - Source: {filename or url}')
-
-    # Attempt to load the file and get the type
-    try:
-        rules_archive = RulesArchive(filename=filename, url=url, oinkcode=oinkcode)
-        ruleset_type = rules_archive.ruleset
-    except Exception as e:
-        log.warning(f' - Unable to load rules archive: {e}')
-        return
-    log.verbose(f' - Loaded as: {ruleset_type}')
-
-    # Appends the loaded ruleset
-    rulesets.append(rules_archive)
-
-
-def untar_rulesets(files, target_dir):
+def extract_rulesets(files, target_dir):
     '''
     untar archives to folder,
     '''
 
-    target_dir = join(target_dir, 'extracted_rulesets')
-
-    log.verbose("Preparing to extract the following ruleset tarball files to temp directory:\n - tempdir: " + target_dir)
-
+    log.verbose("Preparing to extract ruleset tarballs:\n - target_dir: " + target_dir)
     for file in files:
 
         # extract TGZ files
@@ -760,7 +756,7 @@ def untar_rulesets(files, target_dir):
 
         log.debug("Out_foldername is: " + out_foldername)
 
-        log.verbose('Extracting tgz file: ' + file.filename + " to " + out_foldername)
+        log.verbose(' - Extracting tgz file: ' + file.filename + " to " + out_foldername)
         file.extract(out_foldername)
 
 
@@ -786,33 +782,6 @@ def print_environment(gc):
     log.debug("PWD is: " + str(environ.get('PWD')))
     log.debug("SHELL is: " + str(environ.get('SHELL')))
     log.debug('OS Path Separator is: ' + sep)
-
-
-def get_temp_directory(temp_path, start_time):
-    '''
-    Create a temp directory
-    '''
-
-    #   First check if temp dir is specified in configuration, otherwise
-    #   use system temp dir
-    log.debug('Determining what temporary directory path to use.')
-
-    tmp = join(temp_path, SCRIPT_NAME + '-' + start_time)
-    log.debug("\tWill try using: " + tmp)
-
-    log.debug("\tTrying to create new Temp working file: " + tmp)
-    try:
-        mkdir(tmp)
-        mkdir(join(tmp, 'downloaded_rulesets'))
-        mkdir(join(tmp, 'extracted_rulesets'))
-        if conf.defined('sorule_path'):
-            mkdir(join(tmp, 'so_rules'))
-    except OSError:
-        log.error("Fatal Error: Creation of the temporary working directory %s failed" % tmp)
-    else:
-        log.debug("\tSuccessfully created the temp directory %s " % tmp)
-
-    return tmp
 
 
 def get_snort_version(snort_path=None):

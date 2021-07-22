@@ -2,6 +2,7 @@ import io
 import os
 import re
 import tarfile
+from enum import Enum
 
 import requests
 
@@ -44,6 +45,18 @@ RULESET_LIGHTSPD_FILE_CHECKS = [
     'lightspd/modules/src/Makefile',
     'lightspd/policies/common/'
 ]
+
+
+################################################################################
+# Enums
+################################################################################
+
+# Rulesets enume
+class RulesetTypes(Enum):
+    COMMUNITY = 'Community Ruleset'
+    REGISTERED = 'Registered Ruleset'
+    LIGHTSPD = 'LightSPD Ruleset'
+    UNKNOWN = 'Unknown Ruleset'
 
 
 ################################################################################
@@ -1365,19 +1378,19 @@ class RulesArchive(object):
 
             # Nothing loaded yet
             if not self.filename:
-                return 'UNKNOWN'
+                return RulesetTypes.UNKNOWN
 
             # Try the easy stuff first
             elif self.filename == 'snort3-community-rules.tar.gz':
-                self._ruleset = 'SNORT_COMMUNITY'
+                self._ruleset = RulesetTypes.COMMUNITY
             elif self.filename.startswith('snortrules-snapshot-'):
-                self._ruleset = 'SNORT_REGISTERED'
+                self._ruleset = RulesetTypes.REGISTERED
             elif self.filename == 'Talos_LightSPD.tar.gz':
-                self._ruleset = 'SNORT_LIGHTSPD'
+                self._ruleset = RulesetTypes.LIGHTSPD
 
             # Need the ruleset to be downloaded to perform additional checks
             elif not self._data:
-                return 'UNKNOWN'
+                return RulesetTypes.UNKNOWN
 
             # Harder tries
             else:
@@ -1389,15 +1402,15 @@ class RulesArchive(object):
 
                     # These checks kinda suck, but...
                     if all(x in filenames for x in RULESET_COMMUNITY_FILE_CHECKS):
-                        self._ruleset = 'SNORT_COMMUNITY'
+                        self._ruleset = RulesetTypes.COMMUNITY
                     elif all(x in filenames for x in RULESET_REGISTERED_FILE_CHECKS):
-                        self._ruleset = 'SNORT_REGISTERED'
+                        self._ruleset = RulesetTypes.REGISTERED
                     elif all(x in filenames for x in RULESET_REGISTERED_FILE_CHECKS):
-                        self._ruleset = 'SNORT_LIGHTSPD'
+                        self._ruleset = RulesetTypes.LIGHTSPD
 
                     # Have no idea
                     else:
-                        self._ruleset = 'UNKNOWN'
+                        self._ruleset = RulesetTypes.UNKNOWN
 
         # Return the ruleset
         return self._ruleset
