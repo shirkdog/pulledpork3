@@ -173,6 +173,14 @@ def main():
             return
         log.verbose(f' - Loaded as: {ruleset_type.value}')
 
+        # Save the ruleset
+        try:
+            written_file = rules_archive.write_file(working_dir.downloaded_path)
+        except Exception as e:
+            log.warning(f'Unable to save rules archive: {e}')
+            return
+        log.verbose(f' - Saved as: {written_file}')
+
         # Appends the loaded ruleset
         loaded_rulesets.append(rules_archive)
 

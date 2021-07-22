@@ -1466,6 +1466,9 @@ class RulesArchive(object):
         with open(target_file, 'wb') as fh:
             fh.write(self._data)
 
+        # Return the written filename
+        return target_file
+
     def extract(self, target_path):
         '''
         Extract the rules archive to a target path
