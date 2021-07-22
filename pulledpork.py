@@ -212,29 +212,21 @@ def main():
     # extract rulesets to folder (tupple with ID, full path of folders for extracted rulesets)
     extract_rulesets(loaded_rulesets, working_dir.extracted_path)
 
-    # TEMPORARY to be like-for-like with replaced code
-    extracted_rulesets = [(rs.ruleset, rs.extracted_path) for rs in loaded_rulesets]
-
-    if not extracted_rulesets:
-        log.error("No Extracted Ruleset folders found.")
-
     # -----------------------------------------------------------------------------
     # PROCESS RULESETS HERE
-    # extracted_rulesets is a list of tuples. Each tuple represents a folder in the temp directory
-    #  that contains a ruleset.
-    # the tuple is made up of an ID and the full path to the ruleset folder
-    # the ID is a known entity (SNORT_COMMUNITY..., or the identifier from the config file for the url)
-    # this ID is used later for post-rule processing.
 
     all_new_rules = Rules()
     all_new_policies = Policies()
 
-    for ruleset_type, ruleset_path in extracted_rulesets:
+    for loaded_ruleset in loaded_rulesets:
 
         log.debug('---------------------------------')
 
+        # Save the extracted path to a shorter named var
+        ruleset_path = loaded_ruleset.extracted_path
+
         # determine ruleset type:
-        if ruleset_type == RulesetTypes.COMMUNITY:
+        if loaded_ruleset.ruleset == RulesetTypes.COMMUNITY:
 
             log.info('Processing Community ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
@@ -257,7 +249,7 @@ def main():
             all_new_rules.extend(community_rules)
             all_new_policies.extend(community_policy)
 
-        elif ruleset_type == RulesetTypes.REGISTERED:
+        elif loaded_ruleset.ruleset == RulesetTypes.REGISTERED:
 
             log.info('Processing Registered ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
@@ -294,7 +286,7 @@ def main():
 
                 # get SO rule stubs
                 # todo: generate stubs if distro folder doesn't exist
-                so_rules_path = str(ruleset_path + sep + 'so_rules')
+                so_rules_path = join(ruleset_path, 'so_rules')
 
                 so_rules = Rules(so_rules_path)
                 so_policies = Policies(so_rules_path)
@@ -318,7 +310,7 @@ def main():
             all_new_rules.extend(registered_rules)
             all_new_policies.extend(registered_policies)
 
-        elif ruleset_type == RulesetTypes.LIGHTSPD:
+        elif loaded_ruleset.ruleset == RulesetTypes.LIGHTSPD:
 
             log.info('Processing LightSPD ruleset')
             log.verbose(f' - Ruleset path: {ruleset_path}')
