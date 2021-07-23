@@ -109,10 +109,8 @@ class Logger(object):
         if self.level < level:
             return
 
-        # Sanitize the output
+        # Sanitize the output and print the message
         msg = self._sanitize(msg)
-
-        # Print the message
         print(msg)
 
     def error(self, msg):

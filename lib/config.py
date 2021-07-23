@@ -115,7 +115,7 @@ class Config(object):
         '''
         log.debug('Current configuration:')
         for key, val in self.items():
-            log.debug(f'  Key: {key}\tValue: {val}')
+            log.debug(f' - Key:  {key}, Value:  {val}')
 
     def validate(self):
         '''
@@ -170,11 +170,11 @@ class Config(object):
         if self.defined('local_rules'):
             for local_rule in self.local_rules:
                 if not os.path.exists(local_rule):
-                    log.warning(f'`local_rules` is configured, but at least one entry does not exist: {local_rule}')
+                    log.warning(f'`local_rules` is configured, but at least one entry does not exist:  {local_rule}')
 
         # Ensure the temp dir exists and is a directory
         if self.defined('temp_path') and not os.path.isdir(self.temp_path):
-            log.warning(f'`temp_path` is configured but is not a directory: {self.temp_path}')
+            log.warning(f'`temp_path` is configured but is not a directory:  {self.temp_path}')
 
             # If warnings aren't fatal, we'll unset to use gettempdir() next
             self.temp_path = None
@@ -185,14 +185,14 @@ class Config(object):
 
         # Ensure the Snort bin exists and is a file
         if self.defined('snort_path') and not os.path.isfile(self.snort_path):
-            log.warning(f'`snort_path` is configured but Snort binary was not found: {self.snort_path}')
+            log.warning(f'`snort_path` is configured but Snort binary was not found:  {self.snort_path}')
 
             # If warnings aren't fatal, we'll unset to try just `snort` in $PATH
             self.snort_path = None
 
         # Ensure the SO rule dir exists and is a directory
         if self.defined('sorule_path') and not os.path.isdir(self.sorule_path):
-            log.error(f'`sorule_path` is configured but is not a directory: {self.sorule_path}')
+            log.error(f'`sorule_path` is configured but is not a directory:  {self.sorule_path}')
 
         # Critical checks below
 
@@ -214,7 +214,7 @@ class Config(object):
 
         # Rule mode invalid?
         if self.rule_mode not in ('simple', 'policy'):
-            log.error(f'`rule_mode` has an unexpected value: {self.rule_mode}')
+            log.error(f'`rule_mode` has an unexpected value:  {self.rule_mode}')
 
         # Using policy rule mode...
         if self.rule_mode == 'policy':
@@ -225,7 +225,7 @@ class Config(object):
 
             # Invalid IPS policy?
             if self.ips_policy not in VALID_IPS_POLICIES:
-                log.error(f'`ips_policy` has an unexpected policy name: {self.ips_policy}')
+                log.error(f'`ips_policy` has an unexpected policy name:  {self.ips_policy}')
 
         # Using simple rule_mode
         if self.rule_mode == 'simple':
