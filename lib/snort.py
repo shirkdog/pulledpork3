@@ -2,6 +2,7 @@ import io
 import os
 import re
 import tarfile
+from enum import Enum
 
 import requests
 
@@ -44,6 +45,18 @@ RULESET_LIGHTSPD_FILE_CHECKS = [
     'lightspd/modules/src/Makefile',
     'lightspd/policies/common/'
 ]
+
+
+################################################################################
+# Enums
+################################################################################
+
+# Rulesets enum
+class RulesetTypes(Enum):
+    COMMUNITY = 'Community Ruleset'
+    REGISTERED = 'Registered Ruleset'
+    LIGHTSPD = 'LightSPD Ruleset'
+    UNKNOWN = 'Unknown Ruleset'
 
 
 ################################################################################
@@ -181,7 +194,7 @@ class Blocklist(object):
                 source = 'Blocklist Object'
             blocklist = blocklist._lines.copy()
         elif not isinstance(blocklist, (list, tuple)):
-            raise ValueError(f'Unexpected blocklist to apply: {blocklist}')
+            raise ValueError(f'Unexpected blocklist to apply:  {blocklist}')
 
         # Set source if not set
         if source is None:
@@ -189,7 +202,7 @@ class Blocklist(object):
 
         # Add a comment to indicate the source of following list entries
         if len(blocklist):
-            self._lines.append(f'# Blocklist Source: {source}')
+            self._lines.append(f'# Blocklist Source:  {source}')
 
         # Work through the lines of the blocklist
         for line in blocklist:
@@ -698,7 +711,7 @@ class Rules(object):
 
         # Wut?
         if not isinstance(policy, Policy):
-            raise ValueError(f'Not a recognized Policy object: {policy}')
+            raise ValueError(f'Not a recognized Policy object:  {policy}')
 
         # Work through the rules
         # Toggle rule state based on the policy
@@ -835,7 +848,7 @@ class Rules(object):
 
         # Wut?
         if not isinstance(other_rules, Rules):
-            raise ValueError(f'Not a recognized Rules object: {other_rules}')
+            raise ValueError(f'Not a recognized Rules object:  {other_rules}')
 
         # Work through the rules
         for new_rule in other_rules:
@@ -1058,7 +1071,7 @@ class Policy(object):
 
         # Wut?
         if not isinstance(other_policy, Policy):
-            raise ValueError(f'Not a recognized Policy object: {other_policy}')
+            raise ValueError(f'Not a recognized Policy object:  {other_policy}')
 
         # Update the rules in this policy from the other
         self.rules.update(other_policy.rules)
@@ -1147,7 +1160,7 @@ class Policies(object):
             try:
                 policy_name = self.POLICY_MAP[base_filename]
             except KeyError:
-                raise ValueError(f'Unknown policy source: {rules_path}')
+                raise ValueError(f'Unknown policy source:  {rules_path}')
 
             # Load the policy
             self._policies[policy_name] = Policy(policy_name, rules_path)
@@ -1319,7 +1332,7 @@ class Policies(object):
 
         # Wut?
         else:
-            raise ValueError(f'Not a recognized Policy or Polcies object: {other_thing}')
+            raise ValueError(f'Not a recognized Policy or Polcies object:  {other_thing}')
 
 
 ################################################################################
@@ -1365,19 +1378,19 @@ class RulesArchive(object):
 
             # Nothing loaded yet
             if not self.filename:
-                return 'UNKNOWN'
+                return RulesetTypes.UNKNOWN
 
             # Try the easy stuff first
             elif self.filename == 'snort3-community-rules.tar.gz':
-                self._ruleset = 'SNORT_COMMUNITY'
+                self._ruleset = RulesetTypes.COMMUNITY
             elif self.filename.startswith('snortrules-snapshot-'):
-                self._ruleset = 'SNORT_REGISTERED'
+                self._ruleset = RulesetTypes.REGISTERED
             elif self.filename == 'Talos_LightSPD.tar.gz':
-                self._ruleset = 'SNORT_LIGHTSPD'
+                self._ruleset = RulesetTypes.LIGHTSPD
 
             # Need the ruleset to be downloaded to perform additional checks
             elif not self._data:
-                return 'UNKNOWN'
+                return RulesetTypes.UNKNOWN
 
             # Harder tries
             else:
@@ -1389,15 +1402,15 @@ class RulesArchive(object):
 
                     # These checks kinda suck, but...
                     if all(x in filenames for x in RULESET_COMMUNITY_FILE_CHECKS):
-                        self._ruleset = 'SNORT_COMMUNITY'
+                        self._ruleset = RulesetTypes.COMMUNITY
                     elif all(x in filenames for x in RULESET_REGISTERED_FILE_CHECKS):
-                        self._ruleset = 'SNORT_REGISTERED'
+                        self._ruleset = RulesetTypes.REGISTERED
                     elif all(x in filenames for x in RULESET_REGISTERED_FILE_CHECKS):
-                        self._ruleset = 'SNORT_LIGHTSPD'
+                        self._ruleset = RulesetTypes.LIGHTSPD
 
                     # Have no idea
                     else:
-                        self._ruleset = 'UNKNOWN'
+                        self._ruleset = RulesetTypes.UNKNOWN
 
         # Return the ruleset
         return self._ruleset
@@ -1452,6 +1465,9 @@ class RulesArchive(object):
         # Write the downloaded data to a file on disk
         with open(target_file, 'wb') as fh:
             fh.write(self._data)
+
+        # Return the written filename
+        return target_file
 
     def extract(self, target_path):
         '''

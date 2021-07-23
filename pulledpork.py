@@ -21,11 +21,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 from argparse import ArgumentParser         # command line parameters parser
 from json import load                       # to load json manifest file in lightSPD
-from os import environ, listdir, mkdir, kill
-from os.path import isfile, join, sep, abspath, basename, isdir
+from os import environ, listdir, kill
+from os.path import isfile, join, sep, abspath
 from platform import platform, version, uname, system, python_version, architecture
 from re import search, sub
-from shutil import rmtree, copy             # remove directory tree, python 3.4+
+from shutil import copy                     # remove directory tree, python 3.4+
 try:
     from signal import SIGHUP               # linux/bsd, not windows
 except ImportError:
@@ -33,11 +33,11 @@ except ImportError:
     pass
 from subprocess import Popen, PIPE          # to get Snort version from binary
 from sys import exit, argv                  # print argv and  sys.exit
-from tarfile import open as open_tar        # to extract tgz ruleset file
 
 # Our PulledPork3 internal libraries
-from lib import config, logger
-from lib.snort import Blocklist, Rules, Policies, RulesArchive
+from lib import config, helpers, logger
+from lib.snort import (Blocklist, Rules, Policies,
+                       RulesArchive, RulesetTypes)
 
 
 # -----------------------------------------------------------------------------
@@ -120,11 +120,11 @@ def main():
     config_file = conf.args.configuration[0]  # this is a list of one element
 
     # load configuration file
-    log.info(f'Loading configuration file: {config_file}')
+    log.info(f'Loading configuration file:  {config_file}')
     try:
         conf.load(config_file)
     except Exception as e:
-        log.error(f'Unable to load configuration file: {e}')
+        log.error(f'Unable to load configuration file:  {e}')
 
     # Before we log the config, add hidden string for oinkcode
     if conf.oinkcode and not conf.args.print_oinkcode:
@@ -136,9 +136,9 @@ def main():
     # Attempt to validate the config
     conf.validate()
 
-    # Create a temp working directory (path stored as a string)
-    conf.tempdir = get_temp_directory(conf.temp_path, conf.start_time)
-    log.verbose("Temporary working directory is: " + conf.tempdir)
+    target_dir = f'{SCRIPT_NAME}-{conf.start_time}'
+    working_dir = helpers.WorkingDirectory(conf.temp_path, target_dir, conf.delete_temp_path)
+    log.verbose(f'Working directory is:  {working_dir}')
 
     # Are we missing the Snort version in config?
     if not conf.defined('snort_version'):
@@ -147,67 +147,101 @@ def main():
     # we now have all required info to run, print the configuration to screen
     print_operational_settings()
 
+    # -----------------------------------------------------------------------------
+    # LOAD RULESETS
     # Obtain the archived ruleset (tgz) files
     # either from online sources or from a local folder
-    local_rulesets = []  # list of full file paths to tgz files (local filenames or the path to the tgz files after download)
 
+    log.debug('---------------------------------')
+    log.verbose('Loading rulesets')
+
+    # The RulesArchive objects used for loading
+    loaded_rulesets = []
+
+    # Helper function for loading rulesets
+
+    def load_ruleset(filename=None, url=None, oinkcode=None):
+        '''
+        Load the specified ruleset, locally or from URL, and add to the rulesets list
+        '''
+
+        log.verbose(f'Loading rules archive:\n - Source:  {filename or url}')
+
+        # Attempt to load the file and get the type
+        try:
+            rules_archive = RulesArchive(filename=filename, url=url, oinkcode=oinkcode)
+            ruleset_type = rules_archive.ruleset
+        except Exception as e:
+            log.warning(f'Unable to load rules archive:  {e}')
+            return
+        log.verbose(f' - Loaded as:  {ruleset_type.value}')
+
+        # Save the ruleset
+        try:
+            written_file = rules_archive.write_file(working_dir.downloaded_path)
+        except Exception as e:
+            log.warning(f'Unable to save rules archive:  {e}')
+            return
+        log.verbose(f' - Saved as:  {written_file}')
+
+        # Appends the loaded ruleset
+        loaded_rulesets.append(rules_archive)
+
+    # End helper
+
+    # Loading from a local file?
     if conf.args.file:
-        log.debug("Using one file for ruleset source (not downloading rulesets): " + conf.args.file)
-        load_ruleset(local_rulesets, filename=conf.args.file)
+        log.debug(f'Using one file for ruleset source (not downloading rulesets):\n - {conf.args.file}')
+        load_ruleset(filename=conf.args.file)
 
+    # Loading from a local folder?
     elif conf.args.folder:
-        log.debug("Using all files for ruleset source (not downloading) from: " + conf.args.folder)
+        log.debug(f'Using all files for ruleset source (not downloading) from:\n - {conf.args.folder}')
         for path in listdir(conf.args.folder):
             full_path = join(conf.args.folder, path)
             if isfile(full_path) and (full_path.endswith('tar.gz') or (full_path.endswith('tgz'))):
-                load_ruleset(local_rulesets, filename=full_path)
+                load_ruleset(filename=full_path)
 
+    # Loading from the Snort rulesets?
     else:
-        log.debug("Downloading rulesets from Internet")
+        log.debug('Downloading Snort rulesets from Internet')
 
         if conf.community_ruleset:
-            load_ruleset(local_rulesets, url=RULESET_URL_SNORT_COMMUNITY)
+            load_ruleset(url=RULESET_URL_SNORT_COMMUNITY)
 
         if conf.registered_ruleset:
             version = sub(r'[^a-zA-Z0-9]', '', conf.snort_version)  # version in URL is alphanumeric only
             reg_url = RULESET_URL_SNORT_REGISTERED.replace('<VERSION>', version)
-            load_ruleset(local_rulesets, url=reg_url, oinkcode=conf.oinkcode)
+            load_ruleset(url=reg_url, oinkcode=conf.oinkcode)
 
         if conf.lightspd_ruleset:
-            load_ruleset(local_rulesets, url=RULESET_URL_SNORT_LIGHTSPD, oinkcode=conf.oinkcode)
+            load_ruleset(url=RULESET_URL_SNORT_LIGHTSPD, oinkcode=conf.oinkcode)
 
-    if not len(local_rulesets):
+    if not len(loaded_rulesets):
         log.error('No rulesets were loaded')
 
     # extract rulesets to folder (tupple with ID, full path of folders for extracted rulesets)
-    untar_rulesets(local_rulesets, conf.tempdir)
-
-    # TEMPORARY to be like-for-like with replaced code
-    extracted_rulesets = [(rs.ruleset, rs.extracted_path) for rs in local_rulesets]
-
-    if not extracted_rulesets:
-        log.error("No Extracted Ruleset folders found.")
+    extract_rulesets(loaded_rulesets, working_dir.extracted_path)
 
     # -----------------------------------------------------------------------------
     # PROCESS RULESETS HERE
-    # extracted_rulesets is a list of tuples. Each tuple represents a folder in the temp directory
-    #  that contains a ruleset.
-    # the tuple is made up of an ID and the full path to the ruleset folder
-    # the ID is a known entity (SNORT_COMMUNITY..., or the identifier from the config file for the url)
-    # this ID is used later for post-rule processing.
+
+    log.debug('---------------------------------')
+    log.verbose('Processing rulesets')
 
     all_new_rules = Rules()
     all_new_policies = Policies()
 
-    for ruleset_name, ruleset_path in extracted_rulesets:
+    for loaded_ruleset in loaded_rulesets:
 
-        log.debug('---------------------------------')
+        # Save the extracted path to a shorter named var
+        ruleset_path = loaded_ruleset.extracted_path
 
         # determine ruleset type:
-        if ruleset_name == 'SNORT_COMMUNITY':
+        if loaded_ruleset.ruleset == RulesetTypes.COMMUNITY:
 
             log.info('Processing Community ruleset')
-            log.verbose(f' - Ruleset path: {ruleset_path}')
+            log.verbose(f' - Ruleset path:  {ruleset_path}')
 
             # only simple rules to worry about
             # community rules have an extra folder to delve into
@@ -227,10 +261,10 @@ def main():
             all_new_rules.extend(community_rules)
             all_new_policies.extend(community_policy)
 
-        elif ruleset_name == 'SNORT_REGISTERED':
+        elif loaded_ruleset.ruleset == RulesetTypes.REGISTERED:
 
             log.info('Processing Registered ruleset')
-            log.verbose(f' - Ruleset path: {ruleset_path}')
+            log.verbose(f' - Ruleset path:  {ruleset_path}')
 
             # process text rules
             text_rules_path = join(ruleset_path, 'rules')
@@ -260,11 +294,11 @@ def main():
                 for file_name in src_files:
                     full_file_name = join(so_src_folder, file_name)
                     if isfile(full_file_name):
-                        copy(full_file_name, join(conf.tempdir, 'so_rules'))
+                        copy(full_file_name, working_dir.so_rules_path)
 
                 # get SO rule stubs
                 # todo: generate stubs if distro folder doesn't exist
-                so_rules_path = str(ruleset_path + sep + 'so_rules')
+                so_rules_path = join(ruleset_path, 'so_rules')
 
                 so_rules = Rules(so_rules_path)
                 so_policies = Policies(so_rules_path)
@@ -276,7 +310,7 @@ def main():
                 registered_policies.extend(so_policies)
 
             log.verbose(f'Preparing to apply policy {conf.ips_policy} to Registered rules')
-            log.debug(f' - Registered rules before policy application: {registered_rules}')
+            log.debug(f' - Registered rules before policy application:  {registered_rules}')
 
             # apply the policy to these rules
             registered_rules.apply_policy(registered_policies[conf.ips_policy])
@@ -288,10 +322,10 @@ def main():
             all_new_rules.extend(registered_rules)
             all_new_policies.extend(registered_policies)
 
-        elif ruleset_name == 'SNORT_LIGHTSPD':
+        elif loaded_ruleset.ruleset == RulesetTypes.LIGHTSPD:
 
             log.info('Processing LightSPD ruleset')
-            log.verbose(f' - Ruleset path: {ruleset_path}')
+            log.verbose(f' - Ruleset path:  {ruleset_path}')
 
             lightspd_rules = Rules()
             lightspd_policies = Policies()
@@ -312,10 +346,10 @@ def main():
 
                 manifest_versions = sorted(manifest_versions, reverse=True)
 
-                log.debug('Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file: ' + str(manifest_versions))
+                log.debug('Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file:  ' + str(manifest_versions))
 
                 # find version number in the json file that is the largest number just below or equal to the version of snort3.
-                log.debug('Looking for a version in the manifest file that is less than or equal to our current snort Version: ' + conf.snort_version)
+                log.debug('Looking for a version in the manifest file that is less than or equal to our current snort Version:  ' + conf.snort_version)
                 version_to_use = None
                 for v in manifest_versions:
                     if v <= conf.snort_version:
@@ -325,16 +359,16 @@ def main():
                 if version_to_use is None:
                     log.warning("Not able to find a valid snort version in the lightSPD manifest file. not processing any SO rules from the lightSPD package.")
                 else:
-                    log.debug("Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is: ' + conf.snort_version)
+                    log.debug("Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is:  ' + conf.snort_version)
                     # get other data from manifest file for the selected version
                     policies_path = manifest["snort versions"][version_to_use]['policies_path']
                     policies_path = policies_path.replace('/', sep)
-                    log.debug('policies_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + policies_path)
+                    log.debug('policies_path from lightSPD Manifest file for snort ' + version_to_use + ' is:  ' + policies_path)
 
                     # todo: try/catch next line in case the arch. doesn't exist
                     modules_path = manifest["snort versions"][version_to_use]['architectures'][conf.distro]["modules_path"]
                     modules_path = modules_path.replace('/', sep)
-                    log.debug('modules_path from lightSPD Manifest file for snort ' + version_to_use + ' is: ' + modules_path)
+                    log.debug('modules_path from lightSPD Manifest file for snort ' + version_to_use + ' is:  ' + modules_path)
 
                     # copy so files from our archive to working folder
                     so_src_folder = join(ruleset_path, 'lightspd', modules_path, 'so_rules')
@@ -342,7 +376,7 @@ def main():
                     for file_name in src_files:
                         full_file_name = join(so_src_folder, file_name)
                         if isfile(full_file_name):
-                            copy(full_file_name, join(conf.tempdir, 'so_rules'))
+                            copy(full_file_name, working_dir.so_rules_path)
 
                     # get SO rule stub files
                     # todo: generate stubs if distro folder doesn't exist
@@ -409,7 +443,7 @@ def main():
 
         for path in conf.local_rules:
             local_rules = Rules(path)
-            log.info(f'loaded local rules file: {local_rules} from {path}')
+            log.info(f'loaded local rules file:  {local_rules} from {path}')
             all_new_rules.extend(local_rules)
 
             # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
@@ -458,16 +492,15 @@ def main():
 
     # write the policy to disk
     if conf.rule_mode == 'policy':
-        log.info(f'Writing policy file to: {conf.policy_path}')
+        log.info(f'Writing policy file to:  {conf.policy_path}')
         (all_new_policies[conf.ips_policy]).write_file(conf.policy_path)
 
     # copy .so rules from tempdir
     # todo: delete old rules
     if conf.defined('sorule_path'):
-        so_src_folder = join(conf.tempdir, 'so_rules')
-        src_files = listdir(so_src_folder)
+        src_files = listdir(working_dir.so_rules_path)
         for file_name in src_files:
-            full_file_name = join(so_src_folder, file_name)
+            full_file_name = join(working_dir.so_rules_path, file_name)
             if isfile(full_file_name):
                 copy(full_file_name, conf.sorule_path)
 
@@ -477,32 +510,35 @@ def main():
     # Have a blocklist out file defined AND have a blocklist to download?
     if conf.defined('blocklist_path') and any([conf.snort_blocklist, conf.et_blocklist, len(conf.blocklist_urls)]):
 
+        log.debug('---------------------------------')
+        log.verbose('Processing blocklists')
+
         # Prepare an empty blocklist
         new_blocklist = Blocklist()
 
         # Downloading the Snort blocklist?
         if conf.snort_blocklist:
-            log.verbose('Downloading the Snort blocklist')
+            log.verbose(' - Downloading the Snort blocklist')
             try:
                 new_blocklist.load_url(SNORT_BLOCKLIST_URL)
             except Exception as e:
-                log.warning(f'Unable to download the Snort blocklist: {e}')
+                log.warning(f'Unable to download the Snort blocklist:  {e}')
 
         # ET blocklist?
         if conf.et_blocklist:
-            log.verbose('Downloading the ET blocklist')
+            log.verbose(' - Downloading the ET blocklist')
             try:
                 new_blocklist.load_url(ET_BLOCKLIST_URL)
             except Exception as e:
-                log.warning(f'Unable to download the ET blocklist: {e}')
+                log.warning(f'Unable to download the ET blocklist:  {e}')
 
         # Any other blocklists
         for bl_url in conf.blocklist_urls:
-            log.verbose(f'Downloading the blocklist: {bl_url}')
+            log.verbose(f' - Downloading blocklist:  {bl_url}')
             try:
                 new_blocklist.load_url(bl_url)
             except Exception as e:
-                log.warning(f'Unable to download blocklist: {e}')
+                log.warning(f'Unable to download blocklist:  {e}')
 
         # Compose the blocklist header and write the blocklist file
         blocklist_header = f'#-------------------------------------------------------------------\n'
@@ -515,11 +551,11 @@ def main():
         blocklist_header += f'# }}\n'
         blocklist_header += f'#\n#-------------------------------------------------------------------\n\n'
 
-        log.info(f'Writing blocklist file to: {conf.blocklist_path}')
+        log.info(f' - Writing blocklist file to:  {conf.blocklist_path}')
         try:
             new_blocklist.write_file(conf.blocklist_path, blocklist_header)
         except Exception as e:
-            log.warning(f'Unable to write blocklist: {e}')
+            log.warning(f'Unable to write blocklist:  {e}')
 
     # -----------------------------------------------------------------------------
     # Relad Snort
@@ -539,18 +575,8 @@ def main():
         # c_raise = ucrtbase['raise']
         # c_raise(some_signal)
 
-    # -----------------------------------------------------------------------------
-    # Delete temp dir
-    if not conf.delete_temp_path:
-        log.verbose("Not deleting temporary working directory: " + conf.tempdir)
-    else:
-        log.verbose("Attempting to delete temporary working directory: " + conf.tempdir)
-        try:
-            rmtree(conf.tempdir)
-        except OSError as e:
-            log.warning("Warning: Can't delete temporary working directory: " + e.filename + '.  Error is: ' + e.strerror)
-        else:
-            log.verbose("Successfully deleted temporary working directory: " + conf.tempdir)
+    # Delete the working dir (if requested)
+    del working_dir
 
     # -----------------------------------------------------------------------------
     # END Program Execution (main function)
@@ -622,7 +648,7 @@ def print_operational_settings():
     Print all the operational settings after parsing (what we will do)
     '''
 
-    log.verbose('------------------------------------------------------------')
+    log.verbose('---------------------------------')
     log.verbose("After parsing the command line and configuration file, this is what I know:")
 
     # halt-on-error
@@ -638,7 +664,7 @@ def print_operational_settings():
         log.verbose('Oinkcode will be obfuscated in the output (this is a good thing).')
 
     # Temp dir management
-    log.verbose('Temporary working directory is: ' + conf.tempdir)
+    log.verbose('Temporary directory is:  ' + conf.temp_path)
 
     if conf.delete_temp_path:
         log.verbose('Temporary working directory will be deleted at the end.')
@@ -646,21 +672,21 @@ def print_operational_settings():
         log.verbose('Temporary working directory will not be deleted at the end.')
 
     # env. variables
-    log.verbose('The Snort version number used for processing is: ' + conf.snort_version)
+    log.verbose('The Snort version number used for processing is:  ' + conf.snort_version)
     if conf.distro:
-        log.verbose('The distro used for processing is: ' + conf.distro)
-    log.verbose('The ips policy used for processing is: ' + conf.ips_policy)
+        log.verbose('The distro used for processing is:  ' + conf.distro)
+    log.verbose('The ips policy used for processing is:  ' + conf.ips_policy)
 
     if conf.defined('sorule_path'):
         log.verbose('Pre-compiled (.so) rules will be processed.')
-        log.verbose('Pre-compiled (.so) files will be saved to: ' + conf.sorule_path)
+        log.verbose('Pre-compiled (.so) files will be saved to:  ' + conf.sorule_path)
     else:
         log.verbose('Pre-compiled (.so) rules will not be processed.')
     # ruelset locations
     if conf.args.file:
-        log.verbose('Rulesets will not be downloaded, they will be loaded from a single local file: ' + "\n\t" + conf.args.file)
+        log.verbose('Rulesets will not be downloaded, they will be loaded from a single local file:  ' + "\n\t" + conf.args.file)
     elif conf.args.folder:
-        log.verbose('Rulesets will not be downloaded, they will be loaded from all files in local folder: ' + "\n\t" + conf.args.folder)
+        log.verbose('Rulesets will not be downloaded, they will be loaded from all files in local folder:  ' + "\n\t" + conf.args.folder)
     else:
         log.verbose('Rulesets will be downloaded from: ')
         if conf.registered_ruleset:
@@ -672,26 +698,26 @@ def print_operational_settings():
 
     #   Rules
     if conf.ignored_files:
-        log.verbose(f'The following rules files will not be included in rulesets: {", ".join(conf.ignored_files)}')
+        log.verbose(f'The following rules files will not be included in rulesets:  {", ".join(conf.ignored_files)}')
 
-    log.verbose("Rule Output mode is: " + conf.rule_mode)
+    log.verbose("Rule Output mode is:  " + conf.rule_mode)
     if conf.rule_mode == 'policy':
-        log.verbose('Policy file to write is: ' + conf.policy_path)
+        log.verbose('Policy file to write is:  ' + conf.policy_path)
 
     # local rules files
     for opt in conf.local_rules:
-        log.verbose('Rules from Local rules file will be included: ' + opt)
+        log.verbose('Rules from Local rules file will be included:  ' + opt)
 
-    log.verbose("All Rules will be written to a single file: " + conf.rule_path)
+    log.verbose("All Rules will be written to a single file:  " + conf.rule_path)
     if conf.include_disabled_rules:
         log.verbose("Disabled rules will be written to the rules file")
     else:
         log.verbose("Disabled rules will not be written to the rules file")
 
     # policys
-    log.verbose('The rule_mode is: ' + conf.rule_mode)
+    log.verbose('The rule_mode is:  ' + conf.rule_mode)
     if conf.rule_mode == 'policy':
-        log.verbose('the policy file written (to specify enabled rules) is: ' + conf.policy_path)
+        log.verbose('the policy file written (to specify enabled rules) is:  ' + conf.policy_path)
 
     # blocklists
     if conf.snort_blocklist:
@@ -700,68 +726,38 @@ def print_operational_settings():
         log.verbose("ET blocklist will be downloaded")
 
     for bl in conf.blocklist_urls:
-        log.verbose("Other blocklist will be downloaded: " + bl)
+        log.verbose("Other blocklist will be downloaded:  " + bl)
 
     if not any([conf.snort_blocklist, conf.et_blocklist, len(conf.blocklist_urls)]):
         log.verbose("No Blocklists will be downloaded.")
     else:
-        log.verbose('Blocklist entries will be written to: ' + conf.blocklist_path)
+        log.verbose('Blocklist entries will be written to:  ' + conf.blocklist_path)
 
     # reload snort
     if conf.defined('pid_path'):
-        log.verbose('Snort will be reloaded with new configuration, Pid loaded from: ' + conf.pid_path)
+        log.verbose('Snort will be reloaded with new configuration, Pid loaded from:  ' + conf.pid_path)
     else:
         log.verbose('Snort will NOT be reloaded with new configuration.')
 
-    log.verbose('------------------------------------------------------------')
 
-
-def load_ruleset(rulesets, filename=None, url=None, oinkcode=None):
-    '''
-    Load the specified ruleset, locally or from URL, and add to the rulesets list
-    '''
-
-    log.verbose(f'Loading rules archive:\n - Source: {filename or url}')
-
-    # Attempt to load the file and get the type
-    try:
-        rules_archive = RulesArchive(filename=filename, url=url, oinkcode=oinkcode)
-        ruleset_type = rules_archive.ruleset
-    except Exception as e:
-        log.warning(f' - Unable to load rules archive: {e}')
-        return
-    log.verbose(f' - Loaded as: {ruleset_type}')
-
-    # Appends the loaded ruleset
-    rulesets.append(rules_archive)
-
-
-def untar_rulesets(files, target_dir):
+def extract_rulesets(files, target_dir):
     '''
     untar archives to folder,
     '''
 
-    target_dir = join(target_dir, 'extracted_rulesets')
-
-    log.verbose("Preparing to extract the following ruleset tarball files to temp directory:\n - tempdir: " + target_dir)
-
+    log.verbose(f'Preparing to extract rulesets:\n - Target Path:  {target_dir}')
     for file in files:
-
-        # extract TGZ files
-        log.debug('Working on file: ' + file.filename)
 
         # get the filename
         if file.filename.endswith('.tgz'):
-            out_foldername = join(target_dir, file.filename[:-4])
+            out_dir = join(target_dir, file.filename[:-4])
         elif file.filename.endswith('.tar.gz'):
-            out_foldername = join(target_dir, file.filename[:-7])
+            out_dir = join(target_dir, file.filename[:-7])
         else:
-            out_foldername = join(target_dir, file.filename)
+            out_dir = join(target_dir, file.filename)
 
-        log.debug("Out_foldername is: " + out_foldername)
-
-        log.verbose('Extracting tgz file: ' + file.filename + " to " + out_foldername)
-        file.extract(out_foldername)
+        log.verbose(f' - Extracting archive:\n   - Filename: {file.filename}\n   - To: {out_dir}')
+        file.extract(out_dir)
 
 
 def print_environment(gc):
@@ -771,48 +767,19 @@ def print_environment(gc):
 
     # todo: get distro
     # todo: convert print to 'log'
-    log.verbose(f'Running {VERSION_STR}')
-    log.verbose("Verbosity (-v or -vv) flag enabled. Verbosity level is: " + log.level.name)
-    log.debug('Start time is: ' + gc.start_time)
-    log.debug('Command-line arguments (argv) are:' + str(argv))
+    log.debug(f'Start time:  {gc.start_time}')
+    log.verbose(f'Log level:  {log.level.name}')
     log.debug("Parsed command-line arguments are (including defaults):")
     for k, v in sorted(vars(gc.args).items()):
-        log.debug("\t" + str(k) + ' = ' + str(v))
-    log.debug('Platform is:' + platform() + '; ' + version())
-    log.debug('uname is: ' + str(uname()))
-    log.debug('System is: ' + str(system()))
-    log.debug('Python: ' + str(python_version()))
-    log.debug("architecture is: " + str(architecture()[0]))
-    log.debug("PWD is: " + str(environ.get('PWD')))
-    log.debug("SHELL is: " + str(environ.get('SHELL')))
-    log.debug('OS Path Separator is: ' + sep)
-
-
-def get_temp_directory(temp_path, start_time):
-    '''
-    Create a temp directory
-    '''
-
-    #   First check if temp dir is specified in configuration, otherwise
-    #   use system temp dir
-    log.debug('Determining what temporary directory path to use.')
-
-    tmp = join(temp_path, SCRIPT_NAME + '-' + start_time)
-    log.debug("\tWill try using: " + tmp)
-
-    log.debug("\tTrying to create new Temp working file: " + tmp)
-    try:
-        mkdir(tmp)
-        mkdir(join(tmp, 'downloaded_rulesets'))
-        mkdir(join(tmp, 'extracted_rulesets'))
-        if conf.defined('sorule_path'):
-            mkdir(join(tmp, 'so_rules'))
-    except OSError:
-        log.error("Fatal Error: Creation of the temporary working directory %s failed" % tmp)
-    else:
-        log.debug("\tSuccessfully created the temp directory %s " % tmp)
-
-    return tmp
+        log.debug(f' - {k} = {v}')
+    log.debug(f'Platform:  {platform()}; {version()}')
+    log.debug(f'uname:  {uname()}')
+    log.debug(f'System:  {system()}')
+    log.debug(f'Architecture:  {architecture()[0]}')
+    log.debug(f'Python version:  {python_version()}')
+    log.debug(f'PWD:  {environ.get("PWD")}')
+    log.debug(f'Shell:  {environ.get("SHELL")}')
+    log.debug(f'OS direcotry separator:  {sep}')
 
 
 def get_snort_version(snort_path=None):
@@ -820,33 +787,32 @@ def get_snort_version(snort_path=None):
     Determine the Version of Snort
     '''
 
-    log.debug("Determining Snort version from Snort binary.")
+    log.debug('Determining Snort version from executable')
 
     # Default to just "snort" if no path provided
     snort_path = snort_path or 'snort'
 
     # Run snort to attempt to find the version
     command = f'{snort_path} -V'
-
-    log.debug(f'\tTrying to determine snort version using: {command}')
+    log.debug(f' - Running Snort using:  {command}')
 
     # call the snort binary with -V flag
     try:
         process = Popen(command, stdout=PIPE, stderr=PIPE, shell=True)
         output, error = process.communicate()
     except Exception as e:
-        log.error(f'Fatal error determining snort version from binary: {e}')
+        log.error(f'Fatal error running Snort:  {e}')
 
     # check return call for error
     if error:
-        log.error(f'Fatal error determining snort version from binary: [{process.returncode}] {error.strip()}')
+        log.error(f'Fatal error running Snort:  [{process.returncode}] {error.strip()}')
 
     # parse stdout from snort binary to determine version number
-    log.debug(f"\tOutput from Snort binary with -V flag is: \n{output}\n")
-    x = search(r"Version ([-\.\d\w]+)", str(output))
+    log.debug(f' - Output from Snort: \n{output}')
+    x = search(r'Version ([-\.\d\w]+)', str(output))
     if not x:
         log.error('Unable to grok version number from Snort output')
-    log.verbose("\tsnort version number from executable is: " + x[1])
+    log.verbose(f' - Snort version is: {x[1]}')
     return x[1]
 
 
