@@ -42,6 +42,8 @@ class WorkingDirectory(object):
         Clean up the temprary folder if required
         '''
 
+        log.debug('---------------------------------')
+
         # Not cleaning up?
         if not self.cleanup_on_exit:
             log.verbose(f'Not deleting working directory: {self.path}')

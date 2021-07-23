@@ -152,6 +152,9 @@ def main():
     # Obtain the archived ruleset (tgz) files
     # either from online sources or from a local folder
 
+    log.debug('---------------------------------')
+    log.verbose('Loading rulesets')
+
     # The RulesArchive objects used for loading
     loaded_rulesets = []
 
@@ -188,12 +191,12 @@ def main():
 
     # Loading from a local file?
     if conf.args.file:
-        log.debug("Using one file for ruleset source (not downloading rulesets):  " + conf.args.file)
+        log.debug(f'Using one file for ruleset source (not downloading rulesets):\n - {conf.args.file}')
         load_ruleset(filename=conf.args.file)
 
     # Loading from a local folder?
     elif conf.args.folder:
-        log.debug("Using all files for ruleset source (not downloading) from:  " + conf.args.folder)
+        log.debug(f'Using all files for ruleset source (not downloading) from:\n - {conf.args.folder}')
         for path in listdir(conf.args.folder):
             full_path = join(conf.args.folder, path)
             if isfile(full_path) and (full_path.endswith('tar.gz') or (full_path.endswith('tgz'))):
@@ -201,7 +204,7 @@ def main():
 
     # Loading from the Snort rulesets?
     else:
-        log.debug("Downloading rulesets from Internet")
+        log.debug('Downloading Snort rulesets from Internet')
 
         if conf.community_ruleset:
             load_ruleset(url=RULESET_URL_SNORT_COMMUNITY)
@@ -223,12 +226,13 @@ def main():
     # -----------------------------------------------------------------------------
     # PROCESS RULESETS HERE
 
+    log.debug('---------------------------------')
+    log.verbose('Processing rulesets')
+
     all_new_rules = Rules()
     all_new_policies = Policies()
 
     for loaded_ruleset in loaded_rulesets:
-
-        log.debug('---------------------------------')
 
         # Save the extracted path to a shorter named var
         ruleset_path = loaded_ruleset.extracted_path
@@ -506,12 +510,15 @@ def main():
     # Have a blocklist out file defined AND have a blocklist to download?
     if conf.defined('blocklist_path') and any([conf.snort_blocklist, conf.et_blocklist, len(conf.blocklist_urls)]):
 
+        log.debug('---------------------------------')
+        log.verbose('Processing blocklists')
+
         # Prepare an empty blocklist
         new_blocklist = Blocklist()
 
         # Downloading the Snort blocklist?
         if conf.snort_blocklist:
-            log.verbose('Downloading the Snort blocklist')
+            log.verbose(' - Downloading the Snort blocklist')
             try:
                 new_blocklist.load_url(SNORT_BLOCKLIST_URL)
             except Exception as e:
@@ -519,7 +526,7 @@ def main():
 
         # ET blocklist?
         if conf.et_blocklist:
-            log.verbose('Downloading the ET blocklist')
+            log.verbose(' - Downloading the ET blocklist')
             try:
                 new_blocklist.load_url(ET_BLOCKLIST_URL)
             except Exception as e:
@@ -527,7 +534,7 @@ def main():
 
         # Any other blocklists
         for bl_url in conf.blocklist_urls:
-            log.verbose(f'Downloading the blocklist:  {bl_url}')
+            log.verbose(f' - Downloading blocklist:  {bl_url}')
             try:
                 new_blocklist.load_url(bl_url)
             except Exception as e:
@@ -544,7 +551,7 @@ def main():
         blocklist_header += f'# }}\n'
         blocklist_header += f'#\n#-------------------------------------------------------------------\n\n'
 
-        log.info(f'Writing blocklist file to:  {conf.blocklist_path}')
+        log.info(f' - Writing blocklist file to:  {conf.blocklist_path}')
         try:
             new_blocklist.write_file(conf.blocklist_path, blocklist_header)
         except Exception as e:
@@ -641,7 +648,7 @@ def print_operational_settings():
     Print all the operational settings after parsing (what we will do)
     '''
 
-    log.verbose('------------------------------------------------------------')
+    log.verbose('---------------------------------')
     log.verbose("After parsing the command line and configuration file, this is what I know:")
 
     # halt-on-error
@@ -732,32 +739,25 @@ def print_operational_settings():
     else:
         log.verbose('Snort will NOT be reloaded with new configuration.')
 
-    log.verbose('------------------------------------------------------------')
-
 
 def extract_rulesets(files, target_dir):
     '''
     untar archives to folder,
     '''
 
-    log.verbose("Preparing to extract ruleset tarballs:\n - target_dir:  " + target_dir)
+    log.verbose(f'Preparing to extract rulesets:\n - Target Path:  {target_dir}')
     for file in files:
-
-        # extract TGZ files
-        log.debug('Working on file:  ' + file.filename)
 
         # get the filename
         if file.filename.endswith('.tgz'):
-            out_foldername = join(target_dir, file.filename[:-4])
+            out_dir = join(target_dir, file.filename[:-4])
         elif file.filename.endswith('.tar.gz'):
-            out_foldername = join(target_dir, file.filename[:-7])
+            out_dir = join(target_dir, file.filename[:-7])
         else:
-            out_foldername = join(target_dir, file.filename)
+            out_dir = join(target_dir, file.filename)
 
-        log.debug("Out_foldername is:  " + out_foldername)
-
-        log.verbose(' - Extracting tgz file:  ' + file.filename + " to " + out_foldername)
-        file.extract(out_foldername)
+        log.verbose(f' - Extracting archive:\n   - Filename: {file.filename}\n   - To: {out_dir}')
+        file.extract(out_dir)
 
 
 def print_environment(gc):
@@ -767,21 +767,19 @@ def print_environment(gc):
 
     # todo: get distro
     # todo: convert print to 'log'
-    log.verbose(f'Running {VERSION_STR}')
-    log.verbose("Verbosity (-v or -vv) flag enabled. Verbosity level is:  " + log.level.name)
-    log.debug('Start time is:  ' + gc.start_time)
-    log.debug('Command-line arguments (argv) are:' + str(argv))
+    log.debug(f'Start time:  {gc.start_time}')
+    log.verbose(f'Log level:  {log.level.name}')
     log.debug("Parsed command-line arguments are (including defaults):")
     for k, v in sorted(vars(gc.args).items()):
-        log.debug("\t" + str(k) + ' = ' + str(v))
-    log.debug('Platform is:' + platform() + '; ' + version())
-    log.debug('uname is:  ' + str(uname()))
-    log.debug('System is:  ' + str(system()))
-    log.debug('Python:  ' + str(python_version()))
-    log.debug("architecture is:  " + str(architecture()[0]))
-    log.debug("PWD is:  " + str(environ.get('PWD')))
-    log.debug("SHELL is:  " + str(environ.get('SHELL')))
-    log.debug('OS Path Separator is:  ' + sep)
+        log.debug(f' - {k} = {v}')
+    log.debug(f'Platform:  {platform()}; {version()}')
+    log.debug(f'uname:  {uname()}')
+    log.debug(f'System:  {system()}')
+    log.debug(f'Architecture:  {architecture()[0]}')
+    log.debug(f'Python version:  {python_version()}')
+    log.debug(f'PWD:  {environ.get("PWD")}')
+    log.debug(f'Shell:  {environ.get("SHELL")}')
+    log.debug(f'OS direcotry separator:  {sep}')
 
 
 def get_snort_version(snort_path=None):

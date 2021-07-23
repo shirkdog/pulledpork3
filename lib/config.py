@@ -115,7 +115,12 @@ class Config(object):
         '''
         log.debug('Current configuration:')
         for key, val in self.items():
-            log.debug(f' - Key:  {key}, Value:  {val}')
+
+            # Skip the args (if present)
+            if key == 'args':
+                continue
+
+            log.debug(f' - {key} = {val}')
 
     def validate(self):
         '''
