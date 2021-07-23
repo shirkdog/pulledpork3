@@ -1,4 +1,4 @@
-import os
+import os.path
 from time import strftime, localtime
 from tempfile import gettempdir
 
