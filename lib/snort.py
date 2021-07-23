@@ -194,7 +194,7 @@ class Blocklist(object):
                 source = 'Blocklist Object'
             blocklist = blocklist._lines.copy()
         elif not isinstance(blocklist, (list, tuple)):
-            raise ValueError(f'Unexpected blocklist to apply: {blocklist}')
+            raise ValueError(f'Unexpected blocklist to apply:  {blocklist}')
 
         # Set source if not set
         if source is None:
@@ -202,7 +202,7 @@ class Blocklist(object):
 
         # Add a comment to indicate the source of following list entries
         if len(blocklist):
-            self._lines.append(f'# Blocklist Source: {source}')
+            self._lines.append(f'# Blocklist Source:  {source}')
 
         # Work through the lines of the blocklist
         for line in blocklist:
@@ -711,7 +711,7 @@ class Rules(object):
 
         # Wut?
         if not isinstance(policy, Policy):
-            raise ValueError(f'Not a recognized Policy object: {policy}')
+            raise ValueError(f'Not a recognized Policy object:  {policy}')
 
         # Work through the rules
         # Toggle rule state based on the policy
@@ -848,7 +848,7 @@ class Rules(object):
 
         # Wut?
         if not isinstance(other_rules, Rules):
-            raise ValueError(f'Not a recognized Rules object: {other_rules}')
+            raise ValueError(f'Not a recognized Rules object:  {other_rules}')
 
         # Work through the rules
         for new_rule in other_rules:
@@ -1071,7 +1071,7 @@ class Policy(object):
 
         # Wut?
         if not isinstance(other_policy, Policy):
-            raise ValueError(f'Not a recognized Policy object: {other_policy}')
+            raise ValueError(f'Not a recognized Policy object:  {other_policy}')
 
         # Update the rules in this policy from the other
         self.rules.update(other_policy.rules)
@@ -1160,7 +1160,7 @@ class Policies(object):
             try:
                 policy_name = self.POLICY_MAP[base_filename]
             except KeyError:
-                raise ValueError(f'Unknown policy source: {rules_path}')
+                raise ValueError(f'Unknown policy source:  {rules_path}')
 
             # Load the policy
             self._policies[policy_name] = Policy(policy_name, rules_path)
@@ -1332,7 +1332,7 @@ class Policies(object):
 
         # Wut?
         else:
-            raise ValueError(f'Not a recognized Policy or Polcies object: {other_thing}')
+            raise ValueError(f'Not a recognized Policy or Polcies object:  {other_thing}')
 
 
 ################################################################################
