@@ -51,7 +51,7 @@ RULESET_LIGHTSPD_FILE_CHECKS = [
 # Enums
 ################################################################################
 
-# Rulesets enume
+# Rulesets enum
 class RulesetTypes(Enum):
     COMMUNITY = 'Community Ruleset'
     REGISTERED = 'Registered Ruleset'

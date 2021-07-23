@@ -1,4 +1,4 @@
-import os
+import os.path
 from shutil import rmtree
 
 from . import logger
