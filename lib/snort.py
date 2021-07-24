@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import hashlib
 import tarfile
 from enum import Enum
 
@@ -1367,6 +1368,19 @@ class RulesArchive(object):
         return f'RulesArchive(ruleset:{self.ruleset})'
 
     @property
+    def md5(self):
+        '''
+        Return the MD5 of the loaded rules archive
+        '''
+
+        # Validate we have the archive data
+        if not self._data:
+            raise ValueError('Rules archive has not been loaded')
+
+        # Return the MD5 hex string
+        return hashlib.md5(self._data).hexdigest()
+
+    @property
     def ruleset(self):
         '''
         Attempt to identify the ruleset archive, or return
@@ -1454,7 +1468,7 @@ class RulesArchive(object):
         Save the archive to target path
         '''
 
-        # Validate we've downloaded the URL
+        # Validate we have the archive data
         if not self._data:
             raise ValueError('Rules archive has not been loaded')
 
@@ -1474,7 +1488,7 @@ class RulesArchive(object):
         Extract the rules archive to a target path
         '''
 
-        # Validate we've downloaded the URL
+        # Validate we have the archive data
         if not self._data:
             raise ValueError('Rules archive has not been loaded')
 
