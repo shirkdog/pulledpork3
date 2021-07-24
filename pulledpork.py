@@ -551,7 +551,7 @@ def main():
         blocklist_header += f'# }}\n'
         blocklist_header += f'#\n#-------------------------------------------------------------------\n\n'
 
-        log.info(f' - Writing blocklist file to:  {conf.blocklist_path}')
+        log.info(f'Writing blocklist file to:  {conf.blocklist_path}')
         try:
             new_blocklist.write_file(conf.blocklist_path, blocklist_header)
         except Exception as e:
