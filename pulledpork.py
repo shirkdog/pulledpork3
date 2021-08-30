@@ -24,7 +24,7 @@ from json import load                       # to load json manifest file in ligh
 from os import environ, listdir, kill
 from os.path import isfile, join, sep, abspath
 from platform import platform, version, uname, system, python_version, architecture
-from re import search, sub
+from re import T, search, sub, match
 from shutil import copy                     # remove directory tree, python 3.4+
 try:
     from signal import SIGHUP               # linux/bsd, not windows
@@ -339,27 +339,44 @@ def main():
                 log.debug('Processing json manifest file ' + json_manifest_file)
                 with open(json_manifest_file) as f:
                     manifest = load(f)
-
+                
                 manifest_versions = []
                 for i in manifest["snort versions"]:
                     manifest_versions.append(i)
-
-                manifest_versions = sorted(manifest_versions, reverse=True)
-
+                
                 log.debug('Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file:  ' + str(manifest_versions))
 
+
+                # we need to normalize and then sort the version numbers.
+                normalized_versions = {}
+                for m in manifest_versions:
+                    normalized_versions[normalize_version_number(m)] = m
+
+                sorted_versions = list(normalized_versions.keys())
+                sorted_versions.sort(key=lambda s: list(map(int, s.split('.'))), reverse=True)
+
                 # find version number in the json file that is the largest number just below or equal to the version of snort3.
-                log.debug('Looking for a version in the manifest file that is less than or equal to our current snort Version:  ' + conf.snort_version)
+                log.debug(f'Looking for a version in the manifest file that is less than or equal to our current snort Version:  {conf.snort_version}')
                 version_to_use = None
-                for v in manifest_versions:
-                    if v <= conf.snort_version:
+                normalized_snort_version = normalize_version_number(conf.snort_version)
+
+                log.debug(f'after version normalization, snort version is {normalized_snort_version}.')
+                log.debug(f'   normalized manifest file versions are: {normalized_versions}') 
+                log.debug(f'   normalized sorted list of versions are: {sorted_versions}')
+
+
+                for v in sorted_versions:
+                    if version_equal_or_lesser(normalized_snort_version, v):
+                    # if v <= normalized_snort_version:
                         version_to_use = v
                         break
 
                 if version_to_use is None:
                     log.warning("Not able to find a valid snort version in the lightSPD manifest file. not processing any SO rules from the lightSPD package.")
                 else:
+                    version_to_use = normalized_versions[version_to_use]
                     log.debug("Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is:  ' + conf.snort_version)
+                    
                     # get other data from manifest file for the selected version
                     policies_path = manifest["snort versions"][version_to_use]['policies_path']
                     policies_path = policies_path.replace('/', sep)
@@ -814,6 +831,64 @@ def get_snort_version(snort_path=None):
         log.error('Unable to grok version number from Snort output')
     log.verbose(f' - Snort version is: {x[1]}')
     return x[1]
+
+
+def normalize_version_number(number):
+
+    log.debug(f'entering function normalize_version_number with param {number}')
+    ver = ''
+    # check for a semi-normal number first (n.n.n.n-n) 
+    if match(r"^\d+\.\d+\.\d+\.\d+-\d+$", number):
+        ver = number.replace('-', '.', 1)
+
+    # check for a semi-normal number (n.n.n.n) 
+    elif match(r"^\d+\.\d+\.\d+\.\d+$", number):
+        ver =  number + '.0'
+        
+    # check for early releases with poor numbering (n.n.n-n)
+    elif match(r"^\d+\.\d+\.\d+-\d+$", number):
+        ver =  number.replace('-', '.0.', 1)
+
+    else:
+        log.warning(f'Unknown version number format: {number}' )
+
+    log.debug(f'Normalized version number is {ver}')
+    return ver
+
+def version_equal_or_lesser(v1, v2):
+    # returns true if v1 is equal or less than v2
+
+    log.debug(f'Entering Function version_equal_or_lesser(v1,v2), Comparing version strings: {v1} to {v2}')
+
+    # This will split both the versions by '.'
+    arr1 = v1.split(".")
+    arr2 = v2.split(".")
+    n = len(arr1)
+    m = len(arr2)
+     
+    # converts to integer from string
+    arr1 = [int(i) for i in arr1]
+    arr2 = [int(i) for i in arr2]
+  
+    # compares which list is bigger and fills
+    # smaller list with zero (for unequal delimeters)
+    if n>m:
+      for i in range(m, n):
+         arr2.append(0)
+    elif m>n:
+      for i in range(n, m):
+         arr1.append(0)
+
+    for i in range(len(arr1)):
+        if arr1[i]>arr2[i]:
+            log.debug(f'- Returning True (lesser)')
+            return True
+        elif arr2[i]>arr1[i]:
+            log.debug(f'- Returning False')
+            return False
+    
+    log.debug(f'- Returning True (equal)')
+    return True
 
 
 if __name__ == "__main__":
