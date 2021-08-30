@@ -32,7 +32,6 @@ except ImportError:
     # from ctypes import CDLL, c_raise,      # Windows reload process (not yet implemented)
     pass
 from subprocess import Popen, PIPE          # to get Snort version from binary
-from sys import exit, argv                  # print argv and  sys.exit
 
 # Our PulledPork3 internal libraries
 from lib import config, helpers, logger
@@ -96,7 +95,7 @@ def main():
     if conf.args.version:
         print(VERSION_STR)
         flying_pig_banner()
-        exit(0)
+        return
 
     # Always show pigs flying as the preamble, unless running in quiet mode
     if not conf.args.quiet:

@@ -7,32 +7,52 @@ import sys
 from enum import IntEnum
 
 
+__all__ = [
+    'Levels',
+    'Logger'
+]
+
+
+################################################################################
+# Enums
+################################################################################
+
 class Levels(IntEnum):
-    ERROR = -1
-    WARNING = 0
-    INFO = 1
-    VERBOSE = 2
-    DEBUG = 3
+    ERROR   = -1  # noqa
+    WARNING =  0  # noqa
+    INFO    =  1  # noqa
+    VERBOSE =  2  # noqa
+    DEBUG   =  3  # noqa
 
 
 class Colors(object):
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'  # a nice yellowish warning
-    FAIL = '\033[91m'       # RED
-    ENDC = '\033[0m'    # end the color (end of line)
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+    HEADER    = '\033[95m'  # noqa
+    OKBLUE    = '\033[94m'  # noqa
+    OKCYAN    = '\033[96m'  # noqa
+    OKGREEN   = '\033[92m'  # noqa
+    WARNING   = '\033[93m'  # a nice yellowish warning # noqa
+    FAIL      = '\033[91m'  # RED # noqa
+    ENDC      = '\033[0m'   # end the color (end of line)  # noqa
+    BOLD      = '\033[1m'   # noqa
+    UNDERLINE = '\033[4m'   # noqa
 
+
+################################################################################
+# Constants
+################################################################################
 
 # Global Logger defaults
 DEFAULT_LEVEL = Levels.INFO
 DEFAULT_HALT_ON_WARN = True
 
 
+################################################################################
+# Logger - Responsible for logging as requested
+################################################################################
+
 class Logger(object):
+
+    __slots__ = []
 
     # Set global defaults
     _level = DEFAULT_LEVEL
