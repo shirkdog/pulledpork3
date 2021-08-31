@@ -10,6 +10,17 @@ import requests
 from . import logger
 
 
+__all__ = [
+    'RulesetTypes',
+    'Blocklist',
+    'Rule',
+    'Rules',
+    'Policy',
+    'Policies',
+    'RulesArchive'
+]
+
+
 ################################################################################
 # Logging
 ################################################################################
@@ -54,17 +65,21 @@ RULESET_LIGHTSPD_FILE_CHECKS = [
 
 # Rulesets enum
 class RulesetTypes(Enum):
-    COMMUNITY = 'Community Ruleset'
+    COMMUNITY  = 'Community Ruleset'  # noqa
     REGISTERED = 'Registered Ruleset'
-    LIGHTSPD = 'LightSPD Ruleset'
-    UNKNOWN = 'Unknown Ruleset'
+    LIGHTSPD   = 'LightSPD Ruleset'   # noqa
+    UNKNOWN    = 'Unknown Ruleset'    # noqa
 
 
 ################################################################################
 # Blocklist - Helps with the management of blocklists
 ################################################################################
 
-class Blocklist(object):
+class Blocklist:
+
+    __slots__ = [
+        '_lines',
+    ]
 
     def __init__(self, filename=None, url=None):
         '''
@@ -112,33 +127,9 @@ class Blocklist(object):
         '''
         return len(self._lines)
 
-    def __contains__(self, block):
-        '''
-        Return whether a block entry is in the Blocklist object
-        This will also match comments
-
-        Example:
-        >>> bl = Blocklist('../blocklists/snort.txt')
-        >>> bl
-        Blocklist(lines:1495)
-        >>>
-        >>> '178.175.23.87' in bl
-        True
-        >>> 'smurf' in bl
-        False
-        '''
-        return block in self._lines
-
     def __iter__(self):
         '''
-        Start the enumeration
-        '''
-        self._iter = self._lines.__iter__()
-        return self
-
-    def __next__(self):
-        '''
-        Get the next block in the enumeration
+        Support enumeration of the blocklist lines
 
         Example:
         >>> bl = Blocklist('../blocklists/snort.txt')
@@ -151,8 +142,7 @@ class Blocklist(object):
         ...
         '178.175.23.87'
         '''
-        block = self._iter.__next__()
-        return block
+        return iter(self._lines)
 
     def __getitem__(self, line):
         '''
@@ -180,7 +170,6 @@ class Blocklist(object):
         >>> bl2 = Blocklist('../blocklists/snort.txt')
         >>> bl2
         Blocklist(lines:1495)
-        >>>
         >>>
         >>> bl.extend(bl2)
         >>> bl
@@ -301,7 +290,17 @@ class Blocklist(object):
 # Rule - Represents an individual Snort rule, state, and metadata
 ################################################################################
 
-class Rule(object):
+class Rule:
+
+    __slots__ = [
+        '_raw',
+        'gid',
+        'sid',
+        'rev',
+        'action',
+        'state',
+        'metadata',
+    ]
 
     def __init__(self, rule, **metadata):
         '''
@@ -417,7 +416,12 @@ class Rule(object):
 # Rules - A collection of Rule objects
 ################################################################################
 
-class Rules(object):
+class Rules:
+
+    __slots__ = [
+        '_all_rules',
+        'metadata'
+    ]
 
     def __init__(self, rules_path=None, ignored_files=[], **metadata):
         '''
@@ -516,14 +520,7 @@ class Rules(object):
 
     def __iter__(self):
         '''
-        Start the enumeration
-        '''
-        self._iter = self._all_rules.values().__iter__()
-        return self
-
-    def __next__(self):
-        '''
-        Provide the next rule in the enumeration
+        Support enumeration of the rules
 
         Example
         >>> txt = Rules('../rules')
@@ -536,8 +533,7 @@ class Rules(object):
         ...
         Rule(rule_id:1:24511, action:alert, state:ENABLED)
         '''
-        next_rule = self._iter.__next__()
-        return next_rule
+        return iter(self._all_rules.values())
 
     def __getitem__(self, rule_id):
         '''
@@ -898,7 +894,12 @@ class Rules(object):
 # Policy - A Rule policy
 ################################################################################
 
-class Policy(object):
+class Policy:
+
+    __slots__ = [
+        'name',
+        'rules'
+    ]
 
     def __init__(self, name, policy_file=None):
         '''
@@ -1104,15 +1105,19 @@ class Policy(object):
 # Policies - A collection of Policy objects
 ################################################################################
 
-class Policies(object):
+class Policies:
+
+    __slots__ = [
+        '_policies'
+    ]
 
     POLICY_MAP = {
         # filename: policy_name
-        'rulestates-no-rules-active.states': 'none',
+        'rulestates-no-rules-active.states':  'none',        # noqa
         'rulestates-connectivity-ips.states': 'connectivity',
-        'rulestates-balanced-ips.states': 'balanced',
-        'rulestates-max-detect-ips.states': 'max-detect',
-        'rulestates-security-ips.states': 'security'
+        'rulestates-balanced-ips.states':     'balanced',    # noqa
+        'rulestates-max-detect-ips.states':   'max-detect',  # noqa
+        'rulestates-security-ips.states':     'security'     # noqa
     }
 
     def __init__(self, rules_path=None):
@@ -1189,14 +1194,7 @@ class Policies(object):
 
     def __iter__(self):
         '''
-        Start the enumeration
-        '''
-        self._iter = self._policies.values().__iter__()
-        return self
-
-    def __next__(self):
-        '''
-        Provide the next policy in the enumeration
+        Support enumeration of the policies
 
         Example:
 
@@ -1213,8 +1211,7 @@ class Policies(object):
         Policy(name:connectivity, rules:478)
         Policy(name:none, rules:0)
         '''
-        next_policy = self._iter.__next__()
-        return next_policy
+        return iter(self._policies.values())
 
     def __contains__(self, policy_name):
         '''
@@ -1340,7 +1337,15 @@ class Policies(object):
 # RulesArchive - Helper for loads, saving, and extracting rules archives
 ################################################################################
 
-class RulesArchive(object):
+class RulesArchive:
+
+    __slots__ = [
+        '_data',
+        '_ruleset',
+        'source',
+        'filename',
+        'extracted_path'
+    ]
 
     def __init__(self, ruleset=None, filename=None, url=None, oinkcode=None):
         '''
@@ -1402,7 +1407,7 @@ class RulesArchive(object):
             elif self.filename == 'Talos_LightSPD.tar.gz':
                 self._ruleset = RulesetTypes.LIGHTSPD
 
-            # Need the ruleset to be downloaded to perform additional checks
+            # Need the ruleset to be loaded to perform additional checks
             elif not self._data:
                 return RulesetTypes.UNKNOWN
 
@@ -1492,7 +1497,7 @@ class RulesArchive(object):
         if not self._data:
             raise ValueError('Rules archive has not been loaded')
 
-        # Setup a fileobj from the downloaded data
+        # Setup a fileobj from the loaded data
         tarobj = io.BytesIO(self._data)
 
         # Extract the data to disk

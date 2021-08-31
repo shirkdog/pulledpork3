@@ -5,6 +5,11 @@ from tempfile import gettempdir
 from . import logger
 
 
+__all__ = [
+    'Config'
+]
+
+
 ################################################################################
 # Logging
 ################################################################################
@@ -16,14 +21,20 @@ log = logger.Logger()
 # Constants
 ################################################################################
 
-VALID_IPS_POLICIES = ['none', 'connectivity', 'balanced', 'security', 'max-detect']
+VALID_IPS_POLICIES = [
+    'none',
+    'connectivity',
+    'balanced',
+    'security',
+    'max-detect'
+]
 
 
 ################################################################################
 # Config
 ################################################################################
 
-class Config(object):
+class Config:
 
     # Save the start time for the app
     start_time = strftime('%Y.%m.%d-%H.%M.%S', localtime())

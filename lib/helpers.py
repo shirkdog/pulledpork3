@@ -4,6 +4,11 @@ from shutil import rmtree
 from . import logger
 
 
+__all__ = [
+    'WorkingDirectory'
+]
+
+
 ################################################################################
 # Logging
 ################################################################################
@@ -15,7 +20,17 @@ log = logger.Logger()
 # WorkingDirectory - Temporary directory helper
 ################################################################################
 
-class WorkingDirectory(object):
+class WorkingDirectory:
+
+    __slots__ = [
+        'temp_path',
+        'dir_name',
+        'path',
+        'downloaded_path',
+        'extracted_path',
+        'so_rules_path',
+        'cleanup_on_exit'
+    ]
 
     def __init__(self, temp_path, dir_name, cleanup_on_exit=True):
         '''
