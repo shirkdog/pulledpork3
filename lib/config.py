@@ -49,6 +49,7 @@ class Config:
         'ips_policy': 'connectivity',
         'include_disabled_rules': False,
         'delete_temp_path': True,
+        'state_order': 'enable,drop,disable',
     }
 
     # Map some of the methods from the _config dict to this class
@@ -274,5 +275,29 @@ class Config:
             log.warning('`blocklist_path` is configured but no blocklists have been specified for download')
 
         # Do we need to ensure distro is set in config?
+
+        # convert state_order from string to array of strings
+        #self.state_order = [x.strip() for x in self.state_order.split(',')]
+        self.state_order = list_from_str(self.state_order)
+        # check state_order has only 3 items
+        if len(self.state_order) != 3:
+            log.warning('`state_order` does not have three items.')
+        
+        # check state_order contains 'drop', 'disable', and 'enable'
+        if not 'enable' in self.state_order or not 'drop' in self.state_order or not 'disable' in self.state_order:
+            log.warning('`state_order` is incorrect. Must contain `enable,drop,disable`')
+
+        # check the sid files exist if defined
+        if self.defined('enablesid') and not os.path.exists(self.enablesid):
+            log.warning(f'`enablesid` path is configured, but does not exist:  {self.enablesid}')
+
+        if self.defined('dropsid') and not os.path.exists(self.dropsid):
+            log.warning(f'`dropsid` path is configured, but does not exist:  {self.dropsid}')
+
+        if self.defined('disablesid') and not os.path.exists(self.disablesid):
+            log.warning(f'`disablesid` path is configured, but does not exist:  {self.disablesid}')
+
+        if self.defined('modifysid') and not os.path.exists(self.modifysid):
+            log.warning(f'`modifysid` path is configured, but does not exist:  {self.modifysid}')
 
         log.debug('Exiting: Config.validate()')

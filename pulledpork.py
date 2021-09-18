@@ -749,6 +749,23 @@ def print_operational_settings():
     else:
         log.verbose('Blocklist entries will be written to:  ' + conf.blocklist_path)
 
+    # sid modification order
+    log.verbose('The state_order is: ' + str(conf.state_order))
+
+    # sid files:
+    # check the sid files exist if defined
+    if conf.defined('enablesid'):
+        log.verbose(f'enablesid path is:  {conf.enablesid}')
+
+    if conf.defined('dropsid'):
+        log.verbose(f'dropsid path is:  {conf.dropsid}')
+
+    if conf.defined('disablesid'):
+        log.verbose(f'disablesid path is:  {conf.disablesid}')
+
+    if conf.defined('modifysid'):
+        log.verbose(f'modifysid path is:  {conf.modifysid}')
+
     # reload snort
     if conf.defined('pid_path'):
         log.verbose('Snort will be reloaded with new configuration, Pid loaded from:  ' + conf.pid_path)
