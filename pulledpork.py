@@ -465,6 +465,21 @@ def main():
             # local rules don't come with a policy file, so create one (in case the rule_mode = policy)
             all_new_policies.extend(local_rules.policy_from_state(conf.ips_policy))
 
+    log.info('Preparing to modify rules by sid file')
+    # Modify Rules based on sid files
+    for s in conf.state_order:
+        log.debug(f'- checking to see if {s} sid file is set in conf:')
+        if s == 'enable' and conf.defined('enablesid'):
+            all_new_rules.load_sid_modification_file(conf.enablesid, 'enable')
+        elif s == 'drop' and conf.defined('dropsid'):
+            log.debug ('dropsid is set in conf, will try to process.')
+            all_new_rules.load_sid_modification_file(conf.dropsid, 'drop')
+        elif s == 'disable' and conf.defined('disablesid'):
+            all_new_rules.load_sid_modification_file(conf.disablesid, 'disable')
+        else:
+            #errorout todo
+            pass
+
     log.info('Completed processing all rulesets and local rules:')
     log.info(f' - Collected Rules:  {all_new_rules}')
     log.info(' - Collected Policies:')
