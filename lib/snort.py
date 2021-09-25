@@ -777,8 +777,29 @@ class Rules:
         # Work through the rule IDs
         for rule_id in rule_ids:
 
+            # Check for GID:SID range first
+            m = re.compile(r"(\d+):(\d+)-(\d+):(\d+)")
+            g = m.match(rule_id)
+            if g:
+                start_gid = int(g.group(1))
+                start_sid = int(g.group(2))
+                end_gid = int(g.group(3))
+                end_sid = int(g.group(4))
+
+                for r in self._all_rules:
+                    rule = self._all_rules[r]
+                    sid = int(rule.sid)
+                    gid = int(rule.gid)
+                    if gid >= start_gid and gid <= end_gid and sid >= start_sid and sid <= end_sid:
+                        if state is not None:
+                            rule.state = state
+                        if action is not None:
+                            rule.action = action
+                continue
+  
+
             # Missing?
-            if rule_id not in self._all_rules:
+            elif rule_id not in self._all_rules:
                 if not ignore_missing:
                     raise ValueError(f'Missing rule ID {rule_id} to modify')
                 continue
@@ -961,7 +982,7 @@ class Rules:
                         self.modify(pattern, state, action)
                     elif re.search(r'^\d+:\d+-\d+:\d+$',pattern):
                         # SID range...not sure how to do this yet (TODO)
-                        log.warning('sid processing not implemented yet for SID ranges (GID:SID-GID:SID)')
+                        self.modify(pattern, state, action)
                     elif pattern.startswith('VRT-'):
                         # TODO
                         log.warning('sid processing not implemented yet for categories')
