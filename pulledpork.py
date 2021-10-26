@@ -43,7 +43,13 @@ from lib.snort import (Blocklist, Rules, Policies,
 #   GLOBAL CONSTANTS
 # -----------------------------------------------------------------------------
 
-__version__ = '3.0.0-BETA'
+# Version is based on the following:
+# First number will always be 3 (until Snort 4 or hell freezes over)
+# Second number will be the major number (3.1.0.0 will be for a major updates only)
+# Third number will be the minor number (3.0.1.0 for a number of bug fixes)
+# Fourth number will be for any revisions between releases (to track builds)
+
+__version__ = '3.0.0.2'
 
 SCRIPT_NAME = 'PulledPork'
 TAGLINE = 'Lowcountry yellow mustard bbq sauce is the best bbq sauce. Fight me.'
