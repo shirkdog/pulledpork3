@@ -420,9 +420,9 @@ def main():
             lightspd_policies.extend(lightspd_text_policies)
 
             # LOAD BULTIN RULES FROM LightSPD archive
-            # right now, the LightSPD folder has a single 3.0.1-3 folder in it, so let's use that explictly
+            # right now, the LightSPD folder has a single 3.0.0.0-0 folder in it, so let's use that explictly
             # hopefully this will be changed to an explicit entry in the manifest.json file
-            builtin_rules_path = join(ruleset_path, 'lightspd', 'builtins', '3.0.0-264')
+            builtin_rules_path = join(ruleset_path, 'lightspd', 'builtins', '3.0.0.0-0')
             lightspd_builtin_rules = Rules(builtin_rules_path, conf.ignored_files)
             lightspd_builtin_policies = Policies(builtin_rules_path)
 
