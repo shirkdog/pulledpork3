@@ -21,10 +21,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 from argparse import ArgumentParser         # command line parameters parser
 from json import load                       # to load json manifest file in lightSPD
-from os import environ, listdir, kill
+from glob import glob                       # simple file path patern matching
+from os import chmod, environ, listdir, kill
 from os.path import isfile, join, sep, abspath
 from platform import platform, version, uname, system, python_version, architecture
-from re import T, search, sub, match
+from re import T, search, sub, match, MULTILINE
 from shutil import copy                     # remove directory tree, python 3.4+
 try:
     from signal import SIGHUP               # linux/bsd, not windows
@@ -335,9 +336,11 @@ def main():
             lightspd_rules = Rules()
             lightspd_policies = Policies()
 
-            # the manifest.json file is only used (at this time) for processing .so rules
-            if conf.defined('sorule_path'):
-
+            # load .so rules IFF sorule_path is configured.
+            # if 'distro' is not configured, then we need to compile the rules ourself
+            # right now: we only use the manifest.json file for processing .so rules
+            if conf.defined('sorule_path') and conf.defined('distro'):
+                log.debug('Trying to load precompiled so rules')
                 json_manifest_file = join(ruleset_path, 'lightspd', 'manifest.json')
 
                 # load json manfiest file to identify .so rules location
@@ -410,6 +413,13 @@ def main():
 
                 log.debug(f' - SO Rules processed:  {lightspd_rules}')
                 log.debug(f' - SO Policies processed:  {lightspd_policies}')
+
+            elif conf.defined('sorule_path'):
+                log.debug('Trying to compile .so rules (no distro specified)')
+                lightspd_rules, lightspd_policies = compile_so_rules( join(ruleset_path, 'lightspd', 'modules','src'), working_dir.so_rules_path )
+
+            else:
+                log.debug(f'No so rules to process.')
 
             # LOAD TEXT RULES FROM LightSPD archive
             # right now, the LightSPD archive only has a 3.0.0.0 folder in it, so let's use that explicitly.
@@ -722,7 +732,7 @@ def print_operational_settings():
 
     # env. variables
     log.verbose('The Snort version number used for processing is:  ' + conf.snort_version)
-    if conf.distro:
+    if conf.defined('distro'):
         log.verbose('The distro used for processing is:  ' + conf.distro)
     log.verbose('The ips policy used for processing is:  ' + conf.ips_policy)
 
@@ -938,6 +948,109 @@ def version_equal_or_lesser(v1, v2):
     
     log.debug(f'- Returning True (equal)')
     return True
+
+
+def compile_so_rules(src_path, dst_path):
+    log.debug(f'Entering function compile_so_rules with src_path: {src_path}')
+    # the makefile & script to compile the .so rules is a bit of a mess, we need to clean it up a whole lot.
+
+    # first we need to modify the generate_category.sh script to make it executable (755)
+    gen_cat_script = join(src_path, 'generate_category.sh')
+    log.debug(f'Changing permissions to 755 for {gen_cat_script}')
+    try:
+        chmod(gen_cat_script, 0o755) 
+    except Exception as e:
+        log.error(f'Unable to chmod {gen_cat_script}:  {e}')
+
+    # next we need to fix the makefile. it's a mess.
+    # there are a number of hard-coded paths that don't match install standards.
+    # we use pkg-config to determne the correct paths, then replace (regex) the
+    # lines in the makefile.  
+    
+    # fix makefile (PREFIX is hardcoded)
+    # pkg-config --cflags snort = -I/usr/local/include/snort
+    # pkg-config --modversion snort = 3.1.18.0
+    # pkg-config --variable=bindir snort = /usr/local/bin
+
+    # determine the 'bindir'
+    command = 'pkg-config --variable=bindir snort'
+    try:
+        process = Popen(command, stdout=PIPE, stderr=PIPE, shell=True, universal_newlines=True)
+        bindir, error = process.communicate()
+    except Exception as e:
+        log.error(f'Fatal error determining "bindir" by running {command}:  {e}')
+    bindir = bindir.strip()
+    if not bindir:
+        log.error('"bindir" could not be determined by pkg-config.')
+    bindir = join(bindir, 'snort')
+    log.debug(f'bindir as calculated by pkg-config is: {bindir}')
+
+    # determine the 'cflags'
+    command = 'pkg-config --cflags snort'
+    try:
+        process = Popen(command, stdout=PIPE, stderr=PIPE, shell=True, universal_newlines=True)
+        cflags, error = process.communicate()
+    except Exception as e:
+        log.error(f'Fatal error running {command}:  {e}')
+    cflags = cflags.strip()
+
+    if not cflags:
+        log.error('"cflags" could not be determined by pkg-config.')
+        
+    log.debug(f'cflags as determined by pkg-config is: {cflags}')
+
+    # Phasse 2: now we have to replace incorrect lines in makefile
+    makefile = join(src_path, 'Makefile')
+    log.debug(f'Preparing to replace incorrect lines in Makefile: {makefile}')
+
+    with open(makefile, 'r+') as f:
+        text = f.read()
+
+        text = sub('CXXFLAGS \+= -I\$\(PREFIX\)/include/snort', f'CXXFLAGS += {cflags}', text, flags=MULTILINE)
+        text = sub('\$\(SNORT\)', bindir , text, flags=MULTILINE)
+
+        f.seek(0)
+        f.write(text)
+        f.truncate()
+
+        #log.debug (f'The Modified makefile (for generating .so and .stub files ) is now: \n{text}\n')
+
+
+    # now we run the makefile to generate the .so and .stub files in this directory
+    log.info(f'Generating .so and .rule stub files. Be patient as this can take a few minutes.')
+    try:
+        process = Popen('make', stdout=PIPE, stderr=PIPE, shell=True, universal_newlines=True, cwd=src_path)
+        command, error = process.communicate()
+    except Exception as e:
+        log.error(f'Fatal error running make to compile .so rules and generate stubs:  {e}')
+    
+    # todo: get line-by-line feedback as make runs
+
+    log.debug (f'The output from running the makefile is: \n\n {command}\n')
+
+    # assuming no problems, now we have .rules and .so files in this folder (yay!). 
+    # however, the .state files are not included, so we copy them from the pre-compiled rules folder
+    # (not sure if that's ok, but we'll work with it)
+
+    # copy .so files from our archive to working folder
+    so_files = glob(join(src_path, '*.so'), recursive=False)
+
+    for so_file in so_files:
+        if isfile(so_file):
+            copy(so_file, dst_path)
+            log.debug(f'Copying .so file: {so_file}')
+
+    # our rules (stub files) that we created are here
+    lightspd_rules = Rules(src_path)
+    # we use the .state files from the pre-compiled folder for the so rules
+    lightspd_policies = Policies(join(src_path, '..', 'stubs'))
+
+    # need to return these
+    log.debug('after compiling .so rules:')
+    log.debug(f' - SO Rules processed:  {lightspd_rules}')
+    log.debug(f' - SO Policies processed:  {lightspd_policies}')
+
+    return lightspd_rules, lightspd_policies
 
 
 if __name__ == "__main__":
