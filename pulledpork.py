@@ -50,7 +50,7 @@ from lib.snort import (Blocklist, Rules, Policies,
 # Third number will be the minor number (3.0.1.0 for a number of bug fixes)
 # Fourth number will be for any revisions between releases (to track builds)
 
-__version__ = '3.0.0.3'
+__version__ = '3.0.0.4'
 
 SCRIPT_NAME = 'PulledPork'
 TAGLINE = 'Lowcountry yellow mustard bbq sauce is the best bbq sauce. Fight me.'
