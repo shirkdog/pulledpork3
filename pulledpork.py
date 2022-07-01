@@ -25,7 +25,7 @@ from glob import glob                       # simple file path patern matching
 from os import chmod, environ, listdir, kill
 from os.path import isfile, join, sep, abspath
 from platform import platform, version, uname, system, python_version, architecture
-from re import T, search, sub, match, MULTILINE
+from re import search, sub, match, MULTILINE
 from shutil import copy                     # remove directory tree, python 3.4+
 try:
     from signal import SIGHUP               # linux/bsd, not windows
@@ -347,13 +347,12 @@ def main():
                 log.debug('Processing json manifest file ' + json_manifest_file)
                 with open(json_manifest_file) as f:
                     manifest = load(f)
-                
+
                 manifest_versions = []
                 for i in manifest["snort versions"]:
                     manifest_versions.append(i)
-                
-                log.debug('Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file:  ' + str(manifest_versions))
 
+                log.debug('Found ' + str(len(manifest_versions)) + ' versions of snort in the manifest file:  ' + str(manifest_versions))
 
                 # we need to normalize and then sort the version numbers.
                 normalized_versions = {}
@@ -369,13 +368,12 @@ def main():
                 normalized_snort_version = normalize_version_number(conf.snort_version)
 
                 log.debug(f'after version normalization, snort version is {normalized_snort_version}.')
-                log.debug(f'   normalized manifest file versions are: {normalized_versions}') 
+                log.debug(f'   normalized manifest file versions are: {normalized_versions}')
                 log.debug(f'   normalized sorted list of versions are: {sorted_versions}')
 
-
                 for v in sorted_versions:
-                    if version_equal_or_lesser(normalized_snort_version, v):
                     # if v <= normalized_snort_version:
+                    if version_equal_or_lesser(normalized_snort_version, v):
                         version_to_use = v
                         break
 
@@ -384,7 +382,7 @@ def main():
                 else:
                     version_to_use = normalized_versions[version_to_use]
                     log.debug("Using snort version " + version_to_use + ' from lightSPD manifest file. Actual Snort version is:  ' + conf.snort_version)
-                    
+
                     # get other data from manifest file for the selected version
                     policies_path = manifest["snort versions"][version_to_use]['policies_path']
                     policies_path = policies_path.replace('/', sep)
@@ -416,7 +414,7 @@ def main():
 
             elif conf.defined('sorule_path'):
                 log.debug('Trying to compile .so rules (no distro specified)')
-                lightspd_rules, lightspd_policies = compile_so_rules( join(ruleset_path, 'lightspd', 'modules','src'), working_dir.so_rules_path )
+                lightspd_rules, lightspd_policies = compile_so_rules(join(ruleset_path, 'lightspd', 'modules', 'src'), working_dir.so_rules_path)
 
             else:
                 log.debug(f'No so rules to process.')
@@ -488,12 +486,12 @@ def main():
         if s == 'enable' and conf.defined('enablesid'):
             all_new_rules.load_sid_modification_file(conf.enablesid, 'enable')
         elif s == 'drop' and conf.defined('dropsid'):
-            log.debug ('dropsid is set in conf, will try to process.')
+            log.debug('dropsid is set in conf, will try to process.')
             all_new_rules.load_sid_modification_file(conf.dropsid, 'drop')
         elif s == 'disable' and conf.defined('disablesid'):
             all_new_rules.load_sid_modification_file(conf.disablesid, 'disable')
         else:
-            #errorout todo
+            # errorout todo
             pass
 
     log.info('Completed processing all rulesets and local rules:')
@@ -609,24 +607,22 @@ def main():
 
     # Have a PID file defined?
     if conf.defined('pid_path'):
-        log.info('Sending snort process the reload signal.')
-        log.verbose(f'loading pid file: {conf.pid_path}')
+        log.verbose(f'Loading Snort PID file: {conf.pid_path}')
+        pid = 0
         try:
             with open(conf.pid_path, 'r') as f:
-                pid = f.readline().strip()
-                pid = int(pid)
+                pid = int(f.readline().strip())
         except Exception as e:
-            log.warning(f'Error loading pid file {conf.pid_file}: {e}')
+            log.warning(f'Error loading PID file {conf.pid_path}: {e}')
 
-        log.verbose(f'pid loaded from {conf.pid_path} is {pid}')
-
-        log.info(f'preparing to kill {pid}')
-        try:
-            kill(pid, SIGHUP)
-
-        except Exception as e:
-            print (f'Error sending SIGHUP to Snort3 process: {e}')
-
+        if not pid:
+            log.warning(f'Missing or invalid Snort PID: {pid}')
+        else:
+            log.info(f'Sending Snort process the reload signal (PID {pid}).')
+            try:
+                kill(pid, SIGHUP)
+            except Exception as e:
+                log.warning(f'Error sending SIGHUP to Snort3 process: {e}')
 
         # windows SIGHUP
         # import ctypes
@@ -896,23 +892,24 @@ def normalize_version_number(number):
 
     log.debug(f'entering function normalize_version_number with param {number}')
     ver = ''
-    # check for a semi-normal number first (n.n.n.n-n) 
+    # check for a semi-normal number first (n.n.n.n-n)
     if match(r"^\d+\.\d+\.\d+\.\d+-\d+$", number):
         ver = number.replace('-', '.', 1)
 
-    # check for a semi-normal number (n.n.n.n) 
+    # check for a semi-normal number (n.n.n.n)
     elif match(r"^\d+\.\d+\.\d+\.\d+$", number):
-        ver =  number + '.0'
-        
+        ver = number + '.0'
+
     # check for early releases with poor numbering (n.n.n-n)
     elif match(r"^\d+\.\d+\.\d+-\d+$", number):
-        ver =  number.replace('-', '.0.', 1)
+        ver = number.replace('-', '.0.', 1)
 
     else:
-        log.warning(f'Unknown version number format: {number}' )
+        log.warning(f'Unknown version number format: {number}')
 
     log.debug(f'Normalized version number is {ver}')
     return ver
+
 
 def version_equal_or_lesser(v1, v2):
     # returns true if v1 is equal or less than v2
@@ -924,28 +921,28 @@ def version_equal_or_lesser(v1, v2):
     arr2 = v2.split(".")
     n = len(arr1)
     m = len(arr2)
-     
+
     # converts to integer from string
     arr1 = [int(i) for i in arr1]
     arr2 = [int(i) for i in arr2]
-  
+
     # compares which list is bigger and fills
     # smaller list with zero (for unequal delimeters)
-    if n>m:
-      for i in range(m, n):
-         arr2.append(0)
-    elif m>n:
-      for i in range(n, m):
-         arr1.append(0)
+    if n > m:
+        for i in range(m, n):
+            arr2.append(0)
+    elif m > n:
+        for i in range(n, m):
+            arr1.append(0)
 
     for i in range(len(arr1)):
-        if arr1[i]>arr2[i]:
+        if arr1[i] > arr2[i]:
             log.debug(f'- Returning True (lesser)')
             return True
-        elif arr2[i]>arr1[i]:
+        elif arr2[i] > arr1[i]:
             log.debug(f'- Returning False')
             return False
-    
+
     log.debug(f'- Returning True (equal)')
     return True
 
@@ -958,15 +955,15 @@ def compile_so_rules(src_path, dst_path):
     gen_cat_script = join(src_path, 'generate_category.sh')
     log.debug(f'Changing permissions to 755 for {gen_cat_script}')
     try:
-        chmod(gen_cat_script, 0o755) 
+        chmod(gen_cat_script, 0o755)
     except Exception as e:
         log.error(f'Unable to chmod {gen_cat_script}:  {e}')
 
     # next we need to fix the makefile. it's a mess.
     # there are a number of hard-coded paths that don't match install standards.
     # we use pkg-config to determne the correct paths, then replace (regex) the
-    # lines in the makefile.  
-    
+    # lines in the makefile.
+
     # fix makefile (PREFIX is hardcoded)
     # pkg-config --cflags snort = -I/usr/local/include/snort
     # pkg-config --modversion snort = 3.1.18.0
@@ -996,7 +993,7 @@ def compile_so_rules(src_path, dst_path):
 
     if not cflags:
         log.error('"cflags" could not be determined by pkg-config.')
-        
+
     log.debug(f'cflags as determined by pkg-config is: {cflags}')
 
     # Phasse 2: now we have to replace incorrect lines in makefile
@@ -1006,15 +1003,14 @@ def compile_so_rules(src_path, dst_path):
     with open(makefile, 'r+') as f:
         text = f.read()
 
-        text = sub('CXXFLAGS \+= -I\$\(PREFIX\)/include/snort', f'CXXFLAGS += {cflags}', text, flags=MULTILINE)
-        text = sub('\$\(SNORT\)', bindir , text, flags=MULTILINE)
+        text = sub(r'CXXFLAGS \+= -I\$\(PREFIX\)/include/snort', f'CXXFLAGS += {cflags}', text, flags=MULTILINE)
+        text = sub(r'\$\(SNORT\)', bindir, text, flags=MULTILINE)
 
         f.seek(0)
         f.write(text)
         f.truncate()
 
-        #log.debug (f'The Modified makefile (for generating .so and .stub files ) is now: \n{text}\n')
-
+        # log.debug (f'The Modified makefile (for generating .so and .stub files ) is now: \n{text}\n')
 
     # now we run the makefile to generate the .so and .stub files in this directory
     log.info(f'Generating .so and .rule stub files. Be patient as this can take a few minutes.')
@@ -1023,12 +1019,12 @@ def compile_so_rules(src_path, dst_path):
         command, error = process.communicate()
     except Exception as e:
         log.error(f'Fatal error running make to compile .so rules and generate stubs:  {e}')
-    
+
     # todo: get line-by-line feedback as make runs
 
-    log.debug (f'The output from running the makefile is: \n\n {command}\n')
+    log.debug(f'The output from running the makefile is: \n\n {command}\n')
 
-    # assuming no problems, now we have .rules and .so files in this folder (yay!). 
+    # assuming no problems, now we have .rules and .so files in this folder (yay!).
     # however, the .state files are not included, so we copy them from the pre-compiled rules folder
     # (not sure if that's ok, but we'll work with it)
 
