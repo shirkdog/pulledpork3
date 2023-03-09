@@ -796,7 +796,6 @@ class Rules:
                         if action is not None:
                             rule.action = action
                 continue
-  
 
             # Missing?
             elif rule_id not in self._all_rules:
@@ -910,7 +909,7 @@ class Rules:
         # Return the policy
         return new_policy
 
-    def load_sid_modification_file(self, sid_file=None, type=None ):
+    def load_sid_modification_file(self, sid_file=None, type=None):
         '''
         Load a sid modification file
         type will be 'enable', 'drop', or 'disable'
@@ -922,7 +921,7 @@ class Rules:
         # make sure we have a sid_file and the type
         if type not in ["enable", "disable", "drop"]:
             raise ValueError('Invalid `Type` provided to function load_sid_modification_file')
-            
+
         if sid_file is None:
             raise ValueError('No `sid_value` provided to function load_sid_modification_file')
 
@@ -930,13 +929,13 @@ class Rules:
         state = None
         action = None
 
-        if type is 'enable':
+        if type == 'enable':
             state = True
-        elif type is 'disable':
+        elif type == 'disable':
             state = False
-        elif type is 'drop':
+        elif type == 'drop':
             action = 'drop'
-        
+
         # do it
         with open(sid_file, 'r') as fh:
             for line_num, line in enumerate(fh.readlines(), 1):
@@ -963,24 +962,24 @@ class Rules:
 
                     log.debug(f'\t- checking sid pattern: {pattern}')
 
-                    if re.search(r'^MS\d{2}-',pattern):
+                    if re.search(r'^MS\d{2}-', pattern):
                         # ex: reference:url,technet.microsoft.com/en-us/security/bulletin/ms07-062;
                         self.modify_by_regex(f'reference:url,technet.microsoft.com/en-us/security/bulletin/{pattern};', state, action)
                     elif pattern.startswith('cve:'):
                         # ex: reference:cve,2008-1447;
-                        pattern = pattern.replace(':', ',',1)
+                        pattern = pattern.replace(':', ',', 1)
                         self.modify_by_regex(f'reference:{pattern};', state, action)
                     elif pattern.startswith('bugtraq:'):
                         # example from rules file: reference:bugtraq,12960;
-                        pattern = pattern.replace(':', ',',1)
+                        pattern = pattern.replace(':', ',', 1)
                         self.modify_by_regex(f'reference:{pattern};', state, action)
                     elif pattern.startswith('pcre:'):
                         # example: MS(0[7-9]|10)-\d+
                         self.modify_by_regex(f'{pattern[5:]};', state, action)
-                    elif re.search(r'^\d+:\d+$',pattern):
+                    elif re.search(r'^\d+:\d+$', pattern):
                         # exact GID:SID match (easy)
                         self.modify(pattern, state, action)
-                    elif re.search(r'^\d+:\d+-\d+:\d+$',pattern):
+                    elif re.search(r'^\d+:\d+-\d+:\d+$', pattern):
                         # SID range...not sure how to do this yet (TODO)
                         self.modify(pattern, state, action)
                     elif pattern.startswith('VRT-'):
